@@ -1,0 +1,34 @@
+# Secrets and local config
+.env
+.env.*
+!.env.example
+!configs/env.example
+*.pem
+*.key
+
+# OS and editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs and runtime
+logs/
+*.log
+tmp/
+temp/
+
+# Dependencies (when agents add Node/Python/etc.)
+node_modules/
+__pycache__/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# Tooling
+coverage/
+.coverage
+htmlcov/
