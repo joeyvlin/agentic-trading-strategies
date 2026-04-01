@@ -1,0 +1,31 @@
+# Copy to configs/agent.monitor.yaml and adjust (see agents/twilight-strategy-monitor/README.md).
+
+# Poll the Strategy API on this interval (ms). Set to 0 for a single run then exit.
+pollIntervalMs: 60000
+
+# GET /api/strategies query parameters (passed as URL search params)
+strategyFilters:
+  profitable: true
+  limit: 10
+  # minApy: 10
+  # category: Delta-Neutral
+  # risk: LOW
+
+# Risk limits (USD notionals where applicable; align with Strategy API field meanings)
+risk:
+  # Hard cap on sum of open simulated/real notionals across venues
+  maxTotalNotionalUsd: 50000
+  # Per-venue caps (twilight / binance / bybit)
+  maxNotionalPerVenueUsd:
+    twilight: 25000
+    binance: 25000
+    bybit: 25000
+  maxConcurrentLogicalTrades: 3
+  # Stop opening new trades after this much daily loss (simulated or tracked)
+  maxDailyLossUsd: 5000
+
+# Execution profile (overridden by AGENT_MODE env: simulation | real)
+execution:
+  # simulation: log + in-memory portfolio only
+  # real: CEX via ccxt when API keys set; Twilight only if explicitly enabled (see README)
+  mode: simulation

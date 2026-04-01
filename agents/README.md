@@ -11,4 +11,4 @@ Each subdirectory is one **agent**: a named automation with its own configuratio
 
 | Agent | Status | Description |
 |-------|--------|-------------|
-| [twilight-strategy-monitor](twilight-strategy-monitor/) | Scaffold | Monitor Twilight Strategy API for profitable strategies; future: coordinated execution on Twilight + CEX |
+| [twilight-strategy-monitor](twilight-strategy-monitor/) | Runnable | Node.js: polls Strategy API, applies risk limits, **simulation** or **real** (ccxt + optional `relayer-cli`) |

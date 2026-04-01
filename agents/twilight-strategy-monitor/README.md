@@ -1,20 +1,109 @@
 # twilight-strategy-monitor
 
-**Status:** scaffold — implementation pending.
+Polls the **Twilight Strategy API**, applies **risk limits** from `configs/agent.monitor.yaml`, then either:
 
-## Intended behavior
+- **simulation** — logs the intended trade and tracks a virtual portfolio (no exchange or relayer calls), or  
+- **real** — places a **CEX** market order via [ccxt](https://github.com/ccxt/ccxt) (Binance USDM or Bybit) when API keys are set; **Twilight** execution uses `relayer-cli` only if you explicitly enable it.
 
-1. Poll or subscribe (per available APIs) to the Twilight Strategy API for strategies matching configurable filters (`profitable`, `category`, `risk`, `minApy`, `limit`).
-2. Optionally cross-check live market data (`/api/market`).
-3. When thresholds are met, orchestrate execution on **Twilight** and a **second venue** (Binance/Bybit) according to the strategy shape and agent risk limits.
+## Prerequisites
 
-## References
+- **Node.js 18+**
+- Strategy API key (see [twilight-project/agentskill](https://github.com/twilight-project/agentskill) README)
 
-- Skill bundle: [`skills/twilight-protocol-agentskill/`](../../skills/twilight-protocol-agentskill/)
-- Upstream: [twilight-project/agentskill](https://github.com/twilight-project/agentskill)
+## Setup
 
-## Next steps (implementation)
+From the **repository root** (`agentic-trading-strategies/`):
 
-- Choose runtime (Node, Python, or Rust) and add dependency manifest in this folder.
-- Implement configuration from `configs/env.example` and agent-specific YAML/JSON if needed.
-- Add a dry-run mode that logs intended orders without submitting.
+```bash
+cp configs/env.example .env
+# Edit .env — at minimum set STRATEGY_API_KEY
+```
+
+Install dependencies:
+
+```bash
+cd agents/twilight-strategy-monitor
+npm install
+```
+
+Ensure `configs/agent.monitor.yaml` exists (committed default) or copy from `configs/agent.monitor.example.yaml`.
+
+## Run (simulation)
+
+Simulation does **not** send orders. It still calls the live Strategy API for signals.
+
+```bash
+cd agents/twilight-strategy-monitor
+# from .env or inline:
+export STRATEGY_API_KEY="your_key"
+npm run start:sim -- --once
+```
+
+- Omit `--once` to poll every `pollIntervalMs` (default 60000).
+- Set `pollIntervalMs: 0` in `configs/agent.monitor.yaml` for a single run when not passing `--once`.
+
+## Run (real execution)
+
+**Warning:** real mode can place **real exchange orders** and optionally invoke **relayer-cli** for Twilight.
+
+1. Set keys in `.env` (Binance and/or Bybit as needed for the strategy’s CEX leg).
+2. Acknowledge risk:
+
+```bash
+export CONFIRM_REAL_TRADING=YES
+export AGENT_MODE=real
+export STRATEGY_API_KEY="your_key"
+```
+
+3. Start:
+
+```bash
+cd agents/twilight-strategy-monitor
+npm run start:real -- --once
+```
+
+### Twilight (`relayer-cli`)
+
+By default the **Twilight leg is skipped** in real mode. To attempt `relayer-cli order open-trade`:
+
+```bash
+export ALLOW_TWILIGHT_CLI_EXECUTION=1
+# Ensure relayer-cli is on PATH or set TWILIGHT_RELAYER_CLI=/path/to/relayer-cli
+# Wallet env vars must be available to the CLI (see nyks-wallet docs)
+```
+
+### Testnet
+
+```bash
+export BINANCE_USE_TESTNET=1
+# and/or
+export BYBIT_USE_TESTNET=1
+```
+
+## Configuration
+
+| Source | Purpose |
+|--------|---------|
+| `configs/agent.monitor.yaml` | Poll interval, strategy filters (`/api/strategies` query params), risk caps |
+| `.env` | Secrets, `AGENT_MODE`, `CONFIRM_REAL_TRADING`, exchange keys |
+
+Override config path:
+
+```bash
+export AGENT_CONFIG_PATH=/path/to/custom.monitor.yaml
+```
+
+## How it picks trades
+
+Each cycle:
+
+1. Fetches `/api/market` and `/api/strategies` with your filters.
+2. Sorts by **APY** and takes the **top** strategy.
+3. Runs risk checks (total / per-venue notional, concurrent trades, daily loss).
+4. Executes in **simulation** or **real** mode.
+
+## Related docs
+
+- [`docs/architecture.md`](../../docs/architecture.md)
+- [`docs/security.md`](../../docs/security.md)
+- [`skills/twilight-protocol-agentskill/`](../../skills/twilight-protocol-agentskill/)

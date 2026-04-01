@@ -20,3 +20,7 @@ This document describes the intended shape of agents in this repository. Concret
 - Prefer **idempotent** client order IDs on exchanges that support them.
 
 For API and CLI specifics, see [`skills/twilight-protocol-agentskill/`](../skills/twilight-protocol-agentskill/).
+
+## Implementation reference
+
+The [`agents/twilight-strategy-monitor`](../agents/twilight-strategy-monitor/) package implements a first pass: poll `/api/strategies` + `/api/market`, enforce risk limits from `configs/agent.monitor.yaml`, then either simulate or execute via ccxt (and optionally `relayer-cli` when enabled).
