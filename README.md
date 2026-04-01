@@ -22,6 +22,18 @@ A collection of **AI agents** for systematic trading. Agents combine market sign
 
 See **[agents/twilight-strategy-monitor/README.md](agents/twilight-strategy-monitor/README.md)** for **real execution** mode, exchange keys, and `relayer-cli` options.
 
+### Web dashboard
+
+Browser UI to start/stop the monitor, edit YAML config, run **`Run simulation once`**, and inspect transactions / estimated P&amp;L:
+
+```bash
+cd dashboard
+npm install
+npm start
+```
+
+Then open **http://127.0.0.1:3847**. Details: **[dashboard/README.md](dashboard/README.md)**.
+
 ## Phase 1: Twilight multi-venue agents
 
 The first agents use **[Twilight Protocol](https://twilight.rest)** alongside centralized exchanges (e.g. **Binance**, **Bybit**) to monitor profitable strategies and coordinate execution—often delta-neutral or funding-style setups where Twilight’s fee and funding profile differs from other venues.

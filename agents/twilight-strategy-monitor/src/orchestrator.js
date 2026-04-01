@@ -46,14 +46,39 @@ export async function runOneCycle({ config, portfolio, logger }) {
 
   const trade = await exec({ strategy, notionals, market, logger });
 
+  const apyNum = Number(strategy.apy) || 0;
+  const notional = Number(trade.totalNotionalUsd) || 0;
+  /** Rough daily USD yield if APY were constant (for dashboard / simulation tracking). */
+  const estimatedDailyUsd = (apyNum / 100 / 365) * notional;
+
   addLogicalTrade(portfolio, {
     id: trade.tradeId,
     at: new Date().toISOString(),
     strategyId: strategy.id,
+    strategyName: strategy.name,
+    category: strategy.category,
+    apy: strategy.apy,
     totalNotionalUsd: trade.totalNotionalUsd,
     venues: trade.venues,
     mode: trade.mode,
+    estimatedDailyUsd,
   });
 
-  return { skipped: false, strategy, trade };
+  return {
+    skipped: false,
+    strategy,
+    trade,
+    transaction: {
+      tradeId: trade.tradeId,
+      at: new Date().toISOString(),
+      strategyId: strategy.id,
+      strategyName: strategy.name,
+      category: strategy.category,
+      apy: strategy.apy,
+      totalNotionalUsd: trade.totalNotionalUsd,
+      venues: trade.venues,
+      mode: trade.mode,
+      estimatedDailyUsd,
+    },
+  };
 }

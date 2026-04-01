@@ -19,6 +19,10 @@ logs/
 tmp/
 temp/
 
+# Dashboard persisted state (local only)
+data/transactions.json
+data/portfolio.json
+
 # Dependencies (when agents add Node/Python/etc.)
 node_modules/
 __pycache__/

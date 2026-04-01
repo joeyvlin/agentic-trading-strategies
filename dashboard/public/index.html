@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agentic Trading — Control</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700&family=Fraunces:opsz,wght@9..144,500;9..144,700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="noise" aria-hidden="true"></div>
+    <header class="top">
+      <div>
+        <p class="eyebrow">Agentic Trading Strategies</p>
+        <h1>Control desk</h1>
+      </div>
+      <div class="header-actions">
+        <label class="token-field">
+          <span>Dashboard token</span>
+          <input
+            type="password"
+            id="dash-token"
+            placeholder="if DASHBOARD_TOKEN is set"
+            autocomplete="off"
+          />
+        </label>
+        <button type="button" class="btn ghost" id="btn-save-token">Store</button>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section class="card">
+        <h2>Monitor &amp; execution</h2>
+        <p class="muted">
+          Uses <code>configs/agent.monitor.yaml</code> for poll interval and execution mode
+          (<code>simulation</code> or <code>real</code>). Real mode still requires
+          <code>CONFIRM_REAL_TRADING=YES</code> in <code>.env</code>.
+        </p>
+        <div class="status-line" id="status-line">Loading…</div>
+        <div class="btn-row">
+          <button type="button" class="btn primary" id="btn-start">Start monitor</button>
+          <button type="button" class="btn danger" id="btn-stop">Stop</button>
+        </div>
+        <p class="hint" id="last-cycle"></p>
+      </section>
+
+      <section class="card">
+        <h2>Simulation</h2>
+        <p class="muted">
+          Run a single cycle in <strong>simulation</strong> mode (no exchange orders), regardless of
+          yaml execution mode.
+        </p>
+        <button type="button" class="btn" id="btn-sim-once">Run simulation once</button>
+        <pre class="out" id="sim-out"></pre>
+      </section>
+
+      <section class="card wide">
+        <div class="card-head">
+          <h2>Configuration</h2>
+          <button type="button" class="btn small" id="btn-reload-config">Reload</button>
+        </div>
+        <textarea id="config-yaml" spellcheck="false" rows="18"></textarea>
+        <button type="button" class="btn primary" id="btn-save-config">Save YAML</button>
+        <p class="hint" id="config-msg"></p>
+      </section>
+
+      <section class="card">
+        <h2>P&amp;L snapshot</h2>
+        <p class="muted">
+          <strong>Estimated daily USD</strong> uses APY × notional ÷ 365 (illustrative, not realized
+          P&amp;L).
+        </p>
+        <dl class="stats" id="pnl-stats"></dl>
+        <button type="button" class="btn ghost small" id="btn-reset-portfolio">
+          Reset portfolio state
+        </button>
+      </section>
+
+      <section class="card wide">
+        <div class="card-head">
+          <h2>Transactions</h2>
+          <button type="button" class="btn small" id="btn-refresh-tx">Refresh</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Strategy</th>
+                <th>APY</th>
+                <th>Notional</th>
+                <th>Est. daily $</th>
+                <th>Mode</th>
+              </tr>
+            </thead>
+            <tbody id="tx-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card wide">
+        <div class="card-head">
+          <h2>Recent logs</h2>
+          <button type="button" class="btn small" id="btn-refresh-logs">Refresh</button>
+        </div>
+        <pre class="log" id="log-box"></pre>
+      </section>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

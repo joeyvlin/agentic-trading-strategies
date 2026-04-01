@@ -21,7 +21,7 @@ export function loadEnv() {
   dotenv.config();
 }
 
-export function loadAgentConfig(logger) {
+export function loadAgentConfig(logger, options = {}) {
   const root = findRepoRoot();
   const fromEnv = process.env.AGENT_CONFIG_PATH;
   const defaultPath = path.join(root, 'configs', 'agent.monitor.yaml');
@@ -36,7 +36,11 @@ export function loadAgentConfig(logger) {
 
   const raw = fs.readFileSync(configPath, 'utf8');
   const doc = yaml.load(raw);
-  const mode = process.env.AGENT_MODE || doc.execution?.mode || 'simulation';
+  const mode =
+    options.executionMode ||
+    process.env.AGENT_MODE ||
+    doc.execution?.mode ||
+    'simulation';
   if (mode !== 'simulation' && mode !== 'real') {
     throw new Error(`AGENT_MODE must be simulation or real, got: ${mode}`);
   }

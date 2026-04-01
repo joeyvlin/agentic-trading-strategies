@@ -102,6 +102,10 @@ Each cycle:
 3. Runs risk checks (total / per-venue notional, concurrent trades, daily loss).
 4. Executes in **simulation** or **real** mode.
 
+## Web dashboard
+
+A local browser UI (start/stop monitor, edit config, simulation, P&amp;L + transaction history) lives in [`dashboard/`](../../dashboard/). Run `cd dashboard && npm install && npm start` and open http://127.0.0.1:3847.
+
 ## Related docs
 
 - [`docs/architecture.md`](../../docs/architecture.md)

@@ -1,0 +1,176 @@
+import { loadEnv, loadAgentConfig } from '../../agents/twilight-strategy-monitor/src/config.js';
+import { createLogger } from '../../agents/twilight-strategy-monitor/src/logger.js';
+import {
+  createPortfolioState,
+  totalOpenNotional,
+} from '../../agents/twilight-strategy-monitor/src/portfolio.js';
+import { runOneCycle } from '../../agents/twilight-strategy-monitor/src/orchestrator.js';
+import {
+  appendTransaction,
+  loadPortfolioSnapshot,
+  loadTransactions,
+  savePortfolioSnapshot,
+} from './persistence.mjs';
+
+const MAX_LOGS = 200;
+
+function applySnapshot(portfolio, snap) {
+  if (!snap || !Array.isArray(snap.logicalTrades)) return;
+  portfolio.logicalTrades = snap.logicalTrades;
+  portfolio.dailyLossUsd = Number(snap.dailyLossUsd) || 0;
+  portfolio.dayKey = snap.dayKey || portfolio.dayKey;
+}
+
+export function createMonitorService() {
+  loadEnv();
+
+  const logBuffer = [];
+  const logger = createLogger(process.env.LOG_LEVEL || 'info');
+  const origInfo = logger.info.bind(logger);
+  const origWarn = logger.warn.bind(logger);
+  const origErr = logger.error.bind(logger);
+
+  function pushLog(level, args) {
+    const msg = args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
+    logBuffer.push({ t: new Date().toISOString(), level, msg });
+    if (logBuffer.length > MAX_LOGS) logBuffer.splice(0, logBuffer.length - MAX_LOGS);
+  }
+
+  logger.info = (...a) => {
+    pushLog('info', a);
+    origInfo(...a);
+  };
+  logger.warn = (...a) => {
+    pushLog('warn', a);
+    origWarn(...a);
+  };
+  logger.error = (...a) => {
+    pushLog('error', a);
+    origErr(...a);
+  };
+
+  let portfolio = createPortfolioState();
+  applySnapshot(portfolio, loadPortfolioSnapshot());
+
+  let timer = null;
+  let running = false;
+  let pollIntervalMs = 60000;
+  let lastCycle = null;
+  let lastError = null;
+  let startedAt = null;
+
+  async function tick(executionModeOverride) {
+    lastError = null;
+    try {
+      const config = loadAgentConfig(logger, {
+        executionMode: executionModeOverride,
+      });
+      pollIntervalMs = config.pollIntervalMs;
+      const result = await runOneCycle({ config, portfolio, logger });
+      lastCycle = {
+        at: new Date().toISOString(),
+        skipped: !!result.skipped,
+        reason: result.reason,
+        details: result.details,
+        strategy: result.strategy
+          ? { id: result.strategy.id, name: result.strategy.name, apy: result.strategy.apy }
+          : null,
+        transaction: result.transaction || null,
+      };
+
+      if (result.transaction) {
+        appendTransaction(result.transaction);
+        savePortfolioSnapshot(portfolio);
+      }
+      return result;
+    } catch (e) {
+      lastError = e.message || String(e);
+      logger.error(lastError, e);
+      throw e;
+    }
+  }
+
+  return {
+    getLogs: () => [...logBuffer].reverse(),
+
+    getStatus: () => ({
+      running,
+      startedAt,
+      pollIntervalMs,
+      lastCycle,
+      lastError,
+      openNotionalUsd: totalOpenNotional(portfolio),
+      logicalTradeCount: portfolio.logicalTrades.length,
+    }),
+
+    getPortfolio: () => portfolio,
+
+    loadPersistedTransactions: () => loadTransactions(),
+
+    getPnlSummary: () => {
+      const txs = loadTransactions();
+      const sumEstimatedDaily = txs.reduce(
+        (s, t) => s + (Number(t.estimatedDailyUsd) || 0),
+        0
+      );
+      return {
+        transactionCount: txs.length,
+        sumEstimatedDailyUsd: sumEstimatedDaily,
+        openNotionalUsd: totalOpenNotional(portfolio),
+        portfolioTrades: portfolio.logicalTrades.length,
+      };
+    },
+
+    start: async () => {
+      if (running) return { ok: false, message: 'Already running' };
+      const config = loadAgentConfig(logger);
+      if (config.executionMode === 'real' && process.env.CONFIRM_REAL_TRADING !== 'YES') {
+        return {
+          ok: false,
+          message:
+            'Real mode requires CONFIRM_REAL_TRADING=YES in .env (set on the process that starts the dashboard).',
+        };
+      }
+      pollIntervalMs = config.pollIntervalMs;
+      running = true;
+      startedAt = new Date().toISOString();
+
+      try {
+        const run = () => tick().catch(() => {});
+        await run();
+        if (pollIntervalMs > 0) {
+          timer = setInterval(run, pollIntervalMs);
+        } else {
+          running = false;
+          startedAt = null;
+        }
+      } catch (e) {
+        running = false;
+        startedAt = null;
+        throw e;
+      }
+      return { ok: true };
+    },
+
+    stop: () => {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      running = false;
+      startedAt = null;
+      return { ok: true };
+    },
+
+    runSimulationOnce: () => tick('simulation'),
+
+    /** One cycle using current yaml execution.mode and env AGENT_MODE. */
+    runOnce: () => tick(),
+
+    resetPortfolio: () => {
+      portfolio = createPortfolioState();
+      savePortfolioSnapshot(portfolio);
+      return { ok: true };
+    },
+  };
+}
