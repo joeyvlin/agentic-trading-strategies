@@ -15,10 +15,28 @@ function findRepoRoot() {
   return path.resolve(__dirname, '../..');
 }
 
+/** If the shell exports STRATEGY_* empty, dotenv will not override — backfill from repo `.env`. */
+const BACKFILL_FROM_FILE = ['STRATEGY_API_KEY', 'STRATEGY_API_BASE_URL'];
+
 export function loadEnv() {
   const root = findRepoRoot();
-  dotenv.config({ path: path.join(root, '.env') });
+  const envPath = path.join(root, '.env');
+  dotenv.config({ path: envPath });
   dotenv.config();
+  if (!fs.existsSync(envPath)) return;
+  try {
+    const parsed = dotenv.parse(fs.readFileSync(envPath, 'utf8'));
+    for (const name of BACKFILL_FROM_FILE) {
+      const fromFile = parsed[name];
+      if (fromFile == null || String(fromFile).trim() === '') continue;
+      const cur = process.env[name];
+      if (cur == null || String(cur).trim() === '') {
+        process.env[name] = String(fromFile).trim();
+      }
+    }
+  } catch {
+    /* ignore parse/read errors */
+  }
 }
 
 export function loadAgentConfig(logger, options = {}) {

@@ -23,6 +23,18 @@ export async function fetchStrategies(baseUrl, apiKey, filters, logger) {
   return data;
 }
 
+export async function fetchStrategyById(baseUrl, apiKey, id, logger) {
+  const u = new URL(`/api/strategies/${encodeURIComponent(String(id))}`, baseUrl);
+  const headers = {};
+  if (apiKey) headers['x-api-key'] = apiKey;
+  const res = await fetch(u.toString(), { headers });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Strategy API ${res.status}: ${text}`);
+  }
+  return res.json();
+}
+
 export async function fetchMarket(baseUrl, apiKey, logger) {
   const u = new URL('/api/market', baseUrl);
   const headers = {};
