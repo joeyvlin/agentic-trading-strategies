@@ -4,13 +4,14 @@ import {
   createPortfolioState,
   totalOpenNotional,
 } from '../../agents/twilight-strategy-monitor/src/portfolio.js';
-import { runOneCycle } from '../../agents/twilight-strategy-monitor/src/orchestrator.js';
+import { runOneCycle, runOneCycleForStrategy } from '../../agents/twilight-strategy-monitor/src/orchestrator.js';
 import {
   appendTransaction,
   loadPortfolioSnapshot,
   loadTransactions,
   savePortfolioSnapshot,
 } from './persistence.mjs';
+import { appendOpenPosition } from './position-ledger.mjs';
 
 const MAX_LOGS = 200;
 
@@ -81,6 +82,13 @@ export function createMonitorService() {
       if (result.transaction) {
         appendTransaction(result.transaction);
         savePortfolioSnapshot(portfolio);
+        if (result.strategy && result.marketSnapshot) {
+          appendOpenPosition({
+            transaction: result.transaction,
+            strategy: result.strategy,
+            marketSnapshot: result.marketSnapshot,
+          });
+        }
       }
       return result;
     } catch (e) {
@@ -166,6 +174,50 @@ export function createMonitorService() {
 
     /** One cycle using current yaml execution.mode and env AGENT_MODE. */
     runOnce: () => tick(),
+
+    /**
+     * Execute a single Strategy API strategy by id (same risk/exec as monitor).
+     * @param {number|string} strategyId
+     * @param {'simulation'|'real'|undefined} executionModeOverride
+     */
+    runStrategyOnce: async (strategyId, executionModeOverride) => {
+      lastError = null;
+      const config = loadAgentConfig(logger, { executionMode: executionModeOverride });
+      if (config.executionMode === 'real' && process.env.CONFIRM_REAL_TRADING !== 'YES') {
+        throw new Error(
+          'Real mode requires CONFIRM_REAL_TRADING=YES in .env (set on the process that starts the dashboard).'
+        );
+      }
+      const result = await runOneCycleForStrategy({
+        strategyId,
+        config,
+        portfolio,
+        logger,
+      });
+      lastCycle = {
+        at: new Date().toISOString(),
+        skipped: !!result.skipped,
+        reason: result.reason,
+        details: result.details,
+        strategy: result.strategy
+          ? { id: result.strategy.id, name: result.strategy.name, apy: result.strategy.apy }
+          : null,
+        transaction: result.transaction || null,
+      };
+
+      if (result.transaction) {
+        appendTransaction(result.transaction);
+        savePortfolioSnapshot(portfolio);
+        if (result.strategy && result.marketSnapshot) {
+          appendOpenPosition({
+            transaction: result.transaction,
+            strategy: result.strategy,
+            marketSnapshot: result.marketSnapshot,
+          });
+        }
+      }
+      return result;
+    },
 
     resetPortfolio: () => {
       portfolio = createPortfolioState();

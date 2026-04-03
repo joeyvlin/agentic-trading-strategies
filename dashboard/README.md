@@ -47,3 +47,18 @@ Both are **gitignored**; only `data/.gitkeep` is tracked.
 - `GET /api/config`, `PUT /api/config` with `{ "content": "yaml..." }`
 - `GET /api/transactions`, `GET /api/pnl`, `GET /api/logs`
 - `POST /api/portfolio/reset` — clears in-memory portfolio snapshot (does not delete `transactions.json`)
+
+## Twilight `relayer-cli` (dashboard UI + API)
+
+The **Twilight relayer** card runs [nyks-wallet](https://github.com/twilight-project/nyks-wallet) `relayer-cli` **on the server** (same process as the dashboard), with `cwd` = repo root so `.env` / `RELAYER_PROGRAM_JSON_PATH` resolve like your terminal.
+
+| Env | Purpose |
+|-----|---------|
+| `TWILIGHT_RELAYER_CLI` | Path to binary (default: `relayer-cli` on `PATH`) |
+| `NYKS_WALLET_ID` / `NYKS_WALLET_PASSPHRASE` | Optional defaults so you need not type them in the browser |
+| `RELAYER_ALLOW_DASHBOARD_ZK` | Must be `YES` to enable **ZkOS fund** and **zkaccount transfer** from the API/UI |
+| `RELAYER_ALLOW_DASHBOARD_ORDERS` | Must be `YES` to enable **order** open/close/cancel from the API/UI |
+
+**Signing:** There is no separate “sign raw tx” endpoint — the CLI signs when executing wallet/order flows. Use **Unlock** / session or env passphrases as in the [agentskill trader reference](https://github.com/twilight-project/agentskill).
+
+Read-only API examples: `GET /api/relayer/meta`, `POST /api/relayer/ping`, `POST /api/relayer/wallet/list`, `POST /api/relayer/market/price`. Wallet commands: `POST /api/relayer/wallet/balance` with optional JSON `{ "walletId", "password" }`. See `dashboard/lib/relayer-routes.mjs` for the full route list.

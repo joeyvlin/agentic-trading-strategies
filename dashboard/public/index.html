@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Agentic Trading — Control</title>
+    <title>Agentic Trading — Desk</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -17,7 +17,11 @@
     <header class="top">
       <div>
         <p class="eyebrow">Agentic Trading Strategies</p>
-        <h1>Control desk</h1>
+        <h1>Trading desk</h1>
+        <p class="tagline muted">
+          Twilight <code>relayer-cli</code>, testnet faucet, Strategy API ideas, and a local trade journal.
+          Dashboard binds to localhost; exchange keys stay in <code>data/exchange-keys.json</code> (gitignored).
+        </p>
       </div>
       <div class="header-actions">
         <label class="token-field">
@@ -30,17 +34,235 @@
           />
         </label>
         <button type="button" class="btn ghost" id="btn-save-token">Store</button>
+        <p class="hint token-hint">
+          Optional lock: if the server has <code>DASHBOARD_TOKEN</code> in its environment, enter the same value here
+          so requests include <code>x-dashboard-token</code>. If the server runs without that variable, leave this
+          empty (localhost-only is typical).
+        </p>
       </div>
     </header>
 
-    <main class="grid">
-      <section class="card">
-        <h2>Monitor &amp; execution</h2>
+    <nav class="flow-nav" aria-label="Sections">
+      <a href="#sec-env">Environment</a>
+      <a href="#sec-wallet">Wallet</a>
+      <a href="#sec-faucet">Faucet</a>
+      <a href="#sec-manage">Manage</a>
+      <a href="#sec-keys">CEX keys</a>
+      <a href="#sec-agent">Auto agent</a>
+      <a href="#sec-strategies">Best trades</a>
+      <a href="#sec-agent-pnl">Agent P&amp;L</a>
+      <a href="#sec-journal">Journal</a>
+    </nav>
+
+    <div id="dashboard-toasts" class="dashboard-toasts" aria-live="polite" aria-relevant="additions"></div>
+
+    <main class="grid flow-grid">
+      <section class="card wide" id="sec-env">
+        <h2>Environment</h2>
         <p class="muted">
-          Uses <code>configs/agent.monitor.yaml</code> for poll interval and execution mode
-          (<code>simulation</code> or <code>real</code>). Real mode still requires
-          <code>CONFIRM_REAL_TRADING=YES</code> in <code>.env</code>.
+          Edit the repo <code>.env</code> from here. The summary below shows which listed variables already have a
+          value on disk versus which are still empty. Each category below is collapsible. Expand
+          <strong>What "testnet" and "mainnet" presets change</strong>
+          for the exact key/value pairs (sourced from <code>dashboard/lib/env-catalog.mjs</code>, aligned with the
+          Twilight skill docs). After changing <code>DASHBOARD_TOKEN</code>, save then enter the same token in the
+          header field and click Store. Secret fields stay unchanged if left blank on save.
         </p>
+        <div class="btn-row env-actions">
+          <button type="button" class="btn primary" id="btn-env-preset-testnet">
+            Apply testnet preset
+          </button>
+          <button type="button" class="btn" id="btn-env-preset-mainnet">Apply mainnet preset</button>
+          <button type="button" class="btn" id="btn-env-example-key">Example Strategy API key</button>
+          <button type="button" class="btn primary" id="btn-env-save">Save .env</button>
+          <button type="button" class="btn ghost" id="btn-env-reload">Reload</button>
+          <button type="button" class="btn" id="btn-env-view-raw">View raw .env</button>
+        </div>
+        <p class="hint" id="env-path-hint"></p>
+        <p class="hint" id="env-msg"></p>
+        <div id="env-raw-panel" class="env-raw-panel" hidden>
+          <p class="hint env-raw-warning">
+            Exact file on disk (includes secrets). Use only on a trusted screen; do not share screenshots.
+          </p>
+          <pre id="env-raw-content" class="env-raw-pre"></pre>
+        </div>
+        <div id="env-form-root" class="env-form-root"></div>
+      </section>
+
+      <section class="card wide" id="sec-wallet">
+        <h2><span class="step-num">1</span> Twilight wallet</h2>
+        <p class="muted">
+          The dashboard runs <code>relayer-cli</code> on the server. <strong>Create wallet</strong> requires a
+          <strong>wallet ID</strong> (any label stored in the local wallet DB, often your Twilight address after
+          creation) and a <strong>password</strong> to encrypt the wallet file — same as
+          <code>relayer-cli wallet create --wallet-id … --password …</code>. The CLI may also print a
+          <strong>mnemonic once</strong>; save it offline. You can omit typing ID/password here if
+          <code>NYKS_WALLET_ID</code> and <code>NYKS_WALLET_PASSPHRASE</code> are set in <code>.env</code>.
+        </p>
+        <div class="field-grid">
+          <label class="field wide">
+            <span>Wallet for session</span>
+            <select id="wallet-select">
+              <option value="">— Load wallets —</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Wallet password</span>
+            <input type="password" id="wallet-pass" autocomplete="off" placeholder="or NYKS_WALLET_PASSPHRASE" />
+          </label>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn primary" id="btn-wallet-refresh">Refresh list</button>
+        </div>
+        <p class="hint" id="wallet-select-hint" role="status"></p>
+
+        <h3 class="subhead">Create wallet</h3>
+        <div class="field-grid">
+          <label class="field">
+            <span>New wallet ID</span>
+            <input type="text" id="relayer-create-id" autocomplete="off" />
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <input type="password" id="relayer-create-pass" autocomplete="off" />
+          </label>
+          <label class="field wide">
+            <span>Optional BTC address</span>
+            <input type="text" id="relayer-create-btc" autocomplete="off" placeholder="bc1q…" />
+          </label>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn primary" id="btn-relayer-create">Create wallet</button>
+        </div>
+        <pre class="out out-compact" id="wallet-create-out" hidden></pre>
+      </section>
+
+      <section class="card wide" id="sec-faucet">
+        <h2><span class="step-num">2</span> Testnet faucet (NYKS)</h2>
+        <p class="muted" id="faucet-hint">
+          Requires <code>FAUCET_BASE_URL</code> in <code>.env</code> (e.g. testnet
+          <code>https://faucet-rpc.twilight.rest</code>). Uses the same HTTP shape as nyks-wallet
+          (<code>POST /faucet</code>).
+        </p>
+        <label class="inline-check">
+          <input type="checkbox" id="chk-faucet-sats" />
+          <span>Also request test satoshis (<code>POST /mint</code>)</span>
+        </label>
+        <div class="btn-row">
+          <button type="button" class="btn primary" id="btn-faucet">Request from faucet</button>
+        </div>
+        <pre class="out out-compact" id="faucet-out" hidden></pre>
+      </section>
+
+      <section class="card wide" id="sec-manage">
+        <h2><span class="step-num">3</span> Manage wallet</h2>
+        <p class="muted">
+          Read-only and session actions via <code>relayer-cli</code>. ZkOS and live orders stay under
+          <em>Advanced</em> below (gated by <code>RELAYER_ALLOW_DASHBOARD_*</code>).
+        </p>
+        <div class="btn-row">
+          <button type="button" class="btn" id="btn-manage-balance">Balance</button>
+          <button type="button" class="btn" id="btn-manage-accounts">Accounts</button>
+          <button type="button" class="btn" id="btn-manage-info">Info</button>
+          <button type="button" class="btn" id="btn-manage-unlock">Unlock session</button>
+          <button type="button" class="btn" id="btn-manage-lock">Lock session</button>
+          <button type="button" class="btn" id="btn-manage-sync-nonce">Sync nonce</button>
+        </div>
+        <label class="inline-check">
+          <input type="checkbox" id="relayer-onchain-only" />
+          <span>Accounts: on-chain only</span>
+        </label>
+        <pre class="out" id="manage-out"></pre>
+      </section>
+
+      <section class="card wide" id="sec-keys">
+        <h2><span class="step-num">4</span> Binance / Bybit API keys</h2>
+        <p class="muted">
+          Stored server-side in <code>data/exchange-keys.json</code> (mode <code>0600</code>, not served as static
+          files). Leave a field blank to keep the previous value. The agent monitor still reads
+          <code>BINANCE_*</code> / <code>BYBIT_*</code> from <code>.env</code> — this file is for the desk and future
+          wiring.
+        </p>
+        <p class="hint" id="exchange-status"></p>
+        <div class="field-grid">
+          <label class="field wide">
+            <span>Binance API key</span>
+            <input type="password" id="binance-api-key" autocomplete="off" placeholder="unchanged if empty" />
+          </label>
+          <label class="field wide">
+            <span>Binance API secret</span>
+            <input type="password" id="binance-api-secret" autocomplete="off" />
+          </label>
+          <label class="inline-check wide">
+            <input type="checkbox" id="binance-testnet" />
+            <span>Binance testnet</span>
+          </label>
+          <label class="field wide">
+            <span>Bybit API key</span>
+            <input type="password" id="bybit-api-key" autocomplete="off" />
+          </label>
+          <label class="field wide">
+            <span>Bybit API secret</span>
+            <input type="password" id="bybit-api-secret" autocomplete="off" />
+          </label>
+          <label class="inline-check wide">
+            <input type="checkbox" id="bybit-testnet" />
+            <span>Bybit testnet</span>
+          </label>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn primary" id="btn-save-exchange">Save keys</button>
+          <button type="button" class="btn ghost" id="btn-reload-exchange">Reload status</button>
+        </div>
+      </section>
+
+      <section class="card wide" id="sec-agent">
+        <h2><span class="step-num">5</span> Automatic agent</h2>
+        <p class="muted">
+          Edits <code>configs/agent.monitor.yaml</code> (YAML comments are not preserved on save). The monitor polls the
+          Strategy API, enforces risk caps, then runs in <strong>simulation</strong> or <strong>real</strong> mode per
+          <code>execution.mode</code> and <code>AGENT_MODE</code> in <code>.env</code>. Real trading also requires
+          <code>CONFIRM_REAL_TRADING=YES</code>.
+        </p>
+        <div class="field-grid">
+          <label class="field">
+            <span>Poll interval (ms)</span>
+            <input type="text" id="agent-poll" inputmode="numeric" />
+          </label>
+          <label class="field">
+            <span>Strategy limit</span>
+            <input type="text" id="agent-limit" inputmode="numeric" />
+          </label>
+          <label class="inline-check wide">
+            <input type="checkbox" id="agent-profitable" />
+            <span>Only profitable strategies</span>
+          </label>
+          <label class="field">
+            <span>Execution mode</span>
+            <select id="agent-mode">
+              <option value="simulation">simulation</option>
+              <option value="real">real</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Max total notional USD</span>
+            <input type="text" id="agent-max-total" inputmode="decimal" />
+          </label>
+          <label class="field">
+            <span>Max concurrent trades</span>
+            <input type="text" id="agent-max-concurrent" inputmode="numeric" />
+          </label>
+          <label class="field">
+            <span>Max daily loss USD</span>
+            <input type="text" id="agent-max-daily" inputmode="decimal" />
+          </label>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn primary" id="btn-save-agent">Save agent settings</button>
+          <button type="button" class="btn ghost" id="btn-reload-agent">Reload</button>
+        </div>
+        <p class="hint" id="agent-settings-msg"></p>
+
+        <h3 class="subhead">Monitor</h3>
         <div class="status-line" id="status-line">Loading…</div>
         <div class="btn-row">
           <button type="button" class="btn primary" id="btn-start">Start monitor</button>
@@ -49,67 +271,287 @@
         <p class="hint" id="last-cycle"></p>
       </section>
 
-      <section class="card">
-        <h2>Simulation</h2>
-        <p class="muted">
-          Run a single cycle in <strong>simulation</strong> mode (no exchange orders), regardless of
-          yaml execution mode.
-        </p>
-        <button type="button" class="btn" id="btn-sim-once">Run simulation once</button>
-        <pre class="out" id="sim-out"></pre>
-      </section>
-
-      <section class="card wide">
+      <section class="card wide" id="sec-strategies">
         <div class="card-head">
-          <h2>Configuration</h2>
-          <button type="button" class="btn small" id="btn-reload-config">Reload</button>
+          <h2><span class="step-num">6</span> Latest best strategies</h2>
+          <div class="btn-row">
+            <button type="button" class="btn small" id="btn-strategies-refresh">Refresh</button>
+            <label class="inline-check">
+              <input type="checkbox" id="chk-strategies-auto" checked />
+              <span>Every 15s</span>
+            </label>
+          </div>
         </div>
-        <textarea id="config-yaml" spellcheck="false" rows="18"></textarea>
-        <button type="button" class="btn primary" id="btn-save-config">Save YAML</button>
-        <p class="hint" id="config-msg"></p>
+        <p class="muted" id="strategies-meta"></p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Category</th>
+                <th>Risk</th>
+                <th>APY %</th>
+                <th>Est. daily $</th>
+                <th>Twilight</th>
+                <th>Run</th>
+              </tr>
+            </thead>
+            <tbody id="strategies-body"></tbody>
+          </table>
+        </div>
+        <p class="hint">
+          <strong>Sim</strong> runs one agent cycle for that strategy in <strong>simulation</strong> mode.
+          <strong>Real</strong> uses your YAML/env execution mode and requires exchange keys and
+          <code>CONFIRM_REAL_TRADING=YES</code> for live orders.
+        </p>
       </section>
 
-      <section class="card">
-        <h2>P&amp;L snapshot</h2>
-        <p class="muted">
-          <strong>Estimated daily USD</strong> uses APY × notional ÷ 365 (illustrative, not realized
-          P&amp;L).
-        </p>
+      <section class="card wide" id="sec-agent-pnl">
+        <div class="card-head">
+          <h2><span class="step-num">7</span> Agent P&amp;L (positions)</h2>
+          <button type="button" class="btn small" id="btn-pnl-refresh">Refresh</button>
+        </div>
+        <p class="muted" id="pnl-note-line"></p>
         <dl class="stats" id="pnl-stats"></dl>
-        <button type="button" class="btn ghost small" id="btn-reset-portfolio">
-          Reset portfolio state
-        </button>
+        <h3 class="subhead">Open (unrealized)</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Strategy</th>
+                <th>Mode</th>
+                <th>Entry BTC</th>
+                <th>Unreal $</th>
+                <th>Close (realized $)</th>
+              </tr>
+            </thead>
+            <tbody id="positions-open-body"></tbody>
+          </table>
+        </div>
+        <h3 class="subhead">Closed (realized)</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Closed</th>
+                <th>Strategy</th>
+                <th>Realized $</th>
+              </tr>
+            </thead>
+            <tbody id="positions-closed-body"></tbody>
+          </table>
+        </div>
       </section>
 
-      <section class="card wide">
+      <section class="card wide" id="sec-journal">
         <div class="card-head">
-          <h2>Transactions</h2>
-          <button type="button" class="btn small" id="btn-refresh-tx">Refresh</button>
+          <h2><span class="step-num">8</span> Trade journal</h2>
+          <button type="button" class="btn small" id="btn-journal-refresh">Refresh</button>
         </div>
+        <p class="muted">
+          Append-only log in <code>data/trade-journal.json</code>. Use it for executed legs, hedges, or notes until a
+          database lands.
+        </p>
+        <dl class="stats journal-stats" id="journal-summary"></dl>
+        <h3 class="subhead">Add entry</h3>
+        <div class="field-grid">
+          <label class="field">
+            <span>Label</span>
+            <input type="text" id="journal-label" placeholder="e.g. Open hedge" />
+          </label>
+          <label class="field">
+            <span>Venue</span>
+            <select id="journal-venue">
+              <option value="twilight">Twilight</option>
+              <option value="binance">Binance</option>
+              <option value="bybit">Bybit</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Side</span>
+            <select id="journal-side">
+              <option value="long">long</option>
+              <option value="short">short</option>
+              <option value="flat">flat</option>
+              <option value="n/a">n/a</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Notional USD</span>
+            <input type="text" id="journal-notional" inputmode="decimal" placeholder="optional" />
+          </label>
+          <label class="field">
+            <span>PnL USD</span>
+            <input type="text" id="journal-pnl" inputmode="decimal" placeholder="optional" />
+          </label>
+          <label class="field">
+            <span>Fees USD</span>
+            <input type="text" id="journal-fees" inputmode="decimal" placeholder="optional" />
+          </label>
+          <label class="field wide">
+            <span>Note</span>
+            <input type="text" id="journal-note" placeholder="optional" />
+          </label>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn primary" id="btn-journal-add">Add entry</button>
+        </div>
+        <h3 class="subhead">Entries</h3>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
                 <th>Time</th>
-                <th>Strategy</th>
-                <th>APY</th>
-                <th>Notional</th>
-                <th>Est. daily $</th>
-                <th>Mode</th>
+                <th>Label</th>
+                <th>Venue</th>
+                <th>Side</th>
+                <th>PnL $</th>
+                <th></th>
               </tr>
             </thead>
-            <tbody id="tx-body"></tbody>
+            <tbody id="journal-body"></tbody>
           </table>
         </div>
       </section>
 
-      <section class="card wide">
-        <div class="card-head">
-          <h2>Recent logs</h2>
-          <button type="button" class="btn small" id="btn-refresh-logs">Refresh</button>
+      <details class="card wide advanced-block">
+        <summary>Advanced — agent monitor, YAML, logs, relayer orders</summary>
+        <div class="advanced-inner">
+          <section class="card inner-card">
+            <h2>Simulation</h2>
+            <button type="button" class="btn" id="btn-sim-once">Run simulation once</button>
+            <pre class="out" id="sim-out"></pre>
+          </section>
+
+          <section class="card inner-card wide">
+            <div class="card-head">
+              <h2>Configuration</h2>
+              <button type="button" class="btn small" id="btn-reload-config">Reload</button>
+            </div>
+            <textarea id="config-yaml" spellcheck="false" rows="14"></textarea>
+            <button type="button" class="btn primary" id="btn-save-config">Save YAML</button>
+            <p class="hint" id="config-msg"></p>
+          </section>
+
+          <section class="card inner-card">
+            <h2>Portfolio reset</h2>
+            <p class="muted">Clears in-memory agent portfolio snapshot only (not the position ledger in step 7).</p>
+            <button type="button" class="btn ghost small" id="btn-reset-portfolio">Reset portfolio state</button>
+          </section>
+
+          <section class="card inner-card wide">
+            <div class="card-head">
+              <h2>Transactions (agent)</h2>
+              <button type="button" class="btn small" id="btn-refresh-tx">Refresh</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Strategy</th>
+                    <th>APY</th>
+                    <th>Notional</th>
+                    <th>Est. daily $</th>
+                    <th>Mode</th>
+                  </tr>
+                </thead>
+                <tbody id="tx-body"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="card inner-card wide">
+            <div class="card-head">
+              <h2>Recent logs</h2>
+              <button type="button" class="btn small" id="btn-refresh-logs">Refresh</button>
+            </div>
+            <pre class="log" id="log-box"></pre>
+          </section>
+
+          <section class="card inner-card wide relayer-section">
+            <div class="card-head">
+              <h2>Relayer — ZkOS &amp; orders</h2>
+              <button type="button" class="btn small" id="btn-relayer-meta">Meta</button>
+            </div>
+            <p class="muted" id="relayer-meta-line"></p>
+            <p class="hint" id="relayer-binary-hint"></p>
+            <p class="hint" id="relayer-gate-hint">
+              ZkOS: <code>RELAYER_ALLOW_DASHBOARD_ZK=YES</code> · Orders:
+              <code>RELAYER_ALLOW_DASHBOARD_ORDERS=YES</code>
+            </p>
+            <div class="field-grid">
+              <label class="field">
+                <span>Fund (sats)</span>
+                <input type="text" id="relayer-fund-sats" inputmode="numeric" placeholder="e.g. 10000" />
+              </label>
+              <label class="field">
+                <span>Rotate from index</span>
+                <input type="text" id="relayer-zk-from" inputmode="numeric" placeholder="0" />
+              </label>
+            </div>
+            <div class="btn-row">
+              <button type="button" class="btn danger" id="btn-relayer-fund">Zk fund</button>
+              <button type="button" class="btn danger" id="btn-relayer-transfer">Zk transfer</button>
+            </div>
+            <div class="field-grid">
+              <label class="field">
+                <span>Open · account index</span>
+                <input type="text" id="relayer-ot-acc" inputmode="numeric" />
+              </label>
+              <label class="field">
+                <span>Side</span>
+                <select id="relayer-ot-side">
+                  <option value="long">long</option>
+                  <option value="short">short</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Entry USD</span>
+                <input type="text" id="relayer-ot-price" inputmode="numeric" />
+              </label>
+              <label class="field">
+                <span>Leverage</span>
+                <input type="text" id="relayer-ot-lev" inputmode="numeric" />
+              </label>
+              <label class="inline-check">
+                <input type="checkbox" id="relayer-ot-nowait" />
+                <span>--no-wait</span>
+              </label>
+            </div>
+            <div class="btn-row">
+              <button type="button" class="btn danger" id="btn-relayer-open">Open trade</button>
+            </div>
+            <div class="field-grid">
+              <label class="field">
+                <span>Close / cancel · index</span>
+                <input type="text" id="relayer-close-acc" inputmode="numeric" />
+              </label>
+              <label class="inline-check">
+                <input type="checkbox" id="relayer-close-nowait" />
+                <span>Close --no-wait</span>
+              </label>
+            </div>
+            <div class="btn-row">
+              <button type="button" class="btn danger" id="btn-relayer-close">Close trade</button>
+              <button type="button" class="btn danger" id="btn-relayer-cancel">Cancel trade</button>
+            </div>
+            <h3 class="subhead">Import mnemonic</h3>
+            <label class="field wide">
+              <span>Mnemonic</span>
+              <textarea id="relayer-import-mnemonic" rows="2" spellcheck="false"></textarea>
+            </label>
+            <div class="btn-row">
+              <button type="button" class="btn" id="btn-relayer-import">Import</button>
+              <button type="button" class="btn" id="btn-relayer-ping">Ping (price)</button>
+              <button type="button" class="btn" id="btn-relayer-mstats">Market stats</button>
+            </div>
+            <pre class="out relayer-out" id="relayer-out"></pre>
+          </section>
         </div>
-        <pre class="log" id="log-box"></pre>
-      </section>
+      </details>
     </main>
 
     <script src="/app.js" type="module"></script>

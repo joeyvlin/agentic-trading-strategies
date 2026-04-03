@@ -1,10 +1,19 @@
+import { loadEnv } from '../agents/twilight-strategy-monitor/src/config.js';
 import express from 'express';
 import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { registerAgentSettingsRoutes } from './lib/agent-settings-routes.mjs';
 import { createMonitorService } from './lib/monitor-service.mjs';
+import { registerDashboardDataRoutes } from './lib/dashboard-data-routes.mjs';
+import { registerEnvRoutes } from './lib/env-routes.mjs';
+import { getPositionPnlSummary, closePosition } from './lib/position-ledger.mjs';
+import { registerRelayerRoutes } from './lib/relayer-routes.mjs';
 import { getRepoRoot } from './lib/persistence.mjs';
+
+/** Load repo `.env` before anything reads `process.env` (e.g. TWILIGHT_RELAYER_CLI). */
+loadEnv();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = getRepoRoot();
@@ -23,7 +32,6 @@ app.use(
   })
 );
 app.use(express.json({ limit: '2mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
 
 function requireToken(req, res, next) {
   if (!TOKEN) return next();
@@ -35,7 +43,11 @@ function requireToken(req, res, next) {
 }
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: 'agentic-trading-dashboard' });
+  res.json({
+    ok: true,
+    service: 'agentic-trading-dashboard',
+    apiVersion: 1,
+  });
 });
 
 app.get('/api/status', requireToken, (_req, res) => {
@@ -50,8 +62,48 @@ app.get('/api/logs', requireToken, (_req, res) => {
   res.json({ logs: monitor.getLogs() });
 });
 
-app.get('/api/pnl', requireToken, (_req, res) => {
-  res.json(monitor.getPnlSummary());
+app.get('/api/pnl', requireToken, async (_req, res) => {
+  try {
+    const base = monitor.getPnlSummary();
+    const ledger = await getPositionPnlSummary();
+    res.json({
+      ...base,
+      realizedPnlUsd: ledger.realizedPnlUsd,
+      unrealizedPnlUsd: ledger.unrealizedPnlUsd,
+      currentBtcPrice: ledger.currentBtcPrice,
+      openPositions: ledger.openPositions,
+      closedPositions: ledger.closedPositions,
+      openCount: ledger.openCount,
+      closedCount: ledger.closedCount,
+      pnlNote: ledger.pnlNote,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/positions/:tradeId/close', requireToken, (req, res) => {
+  const v = req.body?.realizedPnlUsd;
+  if (v === undefined || v === null || Number.isNaN(Number(v))) {
+    return res.status(400).json({ error: 'Body must include realizedPnlUsd (number)' });
+  }
+  const out = closePosition(req.params.tradeId, Number(v));
+  if (!out.ok) return res.status(404).json(out);
+  res.json({ ok: true });
+});
+
+app.post('/api/monitor/run-strategy', requireToken, async (req, res) => {
+  const strategyId = req.body?.strategyId ?? req.body?.strategy_id;
+  const mode = req.body?.mode;
+  if (strategyId === undefined || strategyId === null || strategyId === '') {
+    return res.status(400).json({ error: 'strategyId is required' });
+  }
+  try {
+    const result = await monitor.runStrategyOnce(strategyId, mode);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message || String(e) });
+  }
 });
 
 app.get('/api/transactions', requireToken, (_req, res) => {
@@ -112,6 +164,13 @@ app.put('/api/config', requireToken, (req, res) => {
   fs.renameSync(tmp, configFile);
   res.json({ ok: true, path: configFile });
 });
+
+registerAgentSettingsRoutes(app, { requireToken });
+registerRelayerRoutes(app, { requireToken });
+registerDashboardDataRoutes(app, { requireToken });
+registerEnvRoutes(app, { requireToken });
+
+app.use(express.static(path.join(__dirname, 'public')));
 
 app.listen(PORT, HOST, () => {
   console.log(

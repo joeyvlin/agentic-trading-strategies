@@ -22,6 +22,10 @@ temp/
 # Dashboard persisted state (local only)
 data/transactions.json
 data/portfolio.json
+data/exchange-keys.json
+data/trade-journal.json
+data/positions.json
+wallet_data.db
 
 # Dependencies (when agents add Node/Python/etc.)
 node_modules/
