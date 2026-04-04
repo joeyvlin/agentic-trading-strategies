@@ -180,7 +180,29 @@
         <h2><span class="step-num">3</span> Manage wallet</h2>
         <p class="muted">
           Read-only and session actions via <code>relayer-cli</code>. ZkOS and live orders stay under
-          <em>Advanced</em> below (gated by <code>RELAYER_ALLOW_DASHBOARD_*</code>).
+          <em>Advanced</em> below (gated by <code>RELAYER_ALLOW_DASHBOARD_*</code>). Most actions need the wallet
+          encryption password (here or in Session wallet, or <code>NYKS_WALLET_PASSPHRASE</code> on the server).
+        </p>
+        <h3 class="subhead">Wallet for these commands</h3>
+        <div class="field-grid">
+          <label class="field wide">
+            <span>Wallet</span>
+            <select id="manage-wallet-select">
+              <option value="">— Select wallet —</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Encryption password</span>
+            <input
+              type="password"
+              id="manage-wallet-pass"
+              autocomplete="off"
+              placeholder="Same as Session wallet, or leave empty if in .env"
+            />
+          </label>
+        </div>
+        <p class="hint small" id="manage-creds-hint">
+          Dropdown stays in sync with step 1 when you refresh wallets or change the session wallet.
         </p>
         <div class="btn-row">
           <button type="button" class="btn" id="btn-manage-balance">Balance</button>

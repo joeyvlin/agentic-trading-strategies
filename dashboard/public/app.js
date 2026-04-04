@@ -149,28 +149,41 @@ function walletSession() {
   return o;
 }
 
-/** Wallet + password for faucet API: faucet fields first, then Session wallet. */
-function faucetWalletCreds() {
-  const faucetSel = document.getElementById('faucet-wallet-select');
-  const faucetPass = document.getElementById('faucet-wallet-pass');
+/** Panel-specific wallet + password; falls back to Session wallet (step 1). */
+function credsFromPanel(selectId, passId) {
+  const panelSel = document.getElementById(selectId);
+  const panelPass = document.getElementById(passId);
   const sessionSel = document.getElementById('wallet-select');
   const sessionPass = document.getElementById('wallet-pass');
-  const walletId = (faucetSel?.value ?? sessionSel?.value ?? '').trim() || '';
-  const fp = faucetPass?.value?.trim() ?? '';
+  const walletId = (panelSel?.value ?? sessionSel?.value ?? '').trim() || '';
+  const pp = panelPass?.value?.trim() ?? '';
   const sp = sessionPass?.value ?? '';
-  const password = fp || sp;
+  const password = pp || sp;
   const o = {};
   if (walletId) o.walletId = walletId;
   if (password) o.password = password;
   return o;
 }
 
-function syncFaucetWalletSelectFromSession() {
+function faucetWalletCreds() {
+  return credsFromPanel('faucet-wallet-select', 'faucet-wallet-pass');
+}
+
+function manageWalletCreds() {
+  return credsFromPanel('manage-wallet-select', 'manage-wallet-pass');
+}
+
+const PANEL_WALLET_SELECT_IDS = ['faucet-wallet-select', 'manage-wallet-select'];
+
+function syncPanelWalletSelectsFromSession() {
   const sel = document.getElementById('wallet-select');
-  const faucetSel = document.getElementById('faucet-wallet-select');
-  if (!sel || !faucetSel) return;
-  faucetSel.innerHTML = sel.innerHTML;
-  faucetSel.value = sel.value;
+  if (!sel) return;
+  for (const id of PANEL_WALLET_SELECT_IDS) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.innerHTML = sel.innerHTML;
+    el.value = sel.value;
+  }
 }
 
 function formatRelayerMissingMessage(raw) {
@@ -216,12 +229,12 @@ async function refreshWalletList(selectId = null, opts = {}) {
     sel.value = pick;
     if (pick) localStorage.setItem(WALLET_STORAGE_KEY, pick);
     else localStorage.removeItem(WALLET_STORAGE_KEY);
-    syncFaucetWalletSelectFromSession();
+    syncPanelWalletSelectsFromSession();
   } catch (e) {
     if (!shouldSurfaceFetchError(e, opts)) return;
     const m = formatRelayerMissingMessage(errMsg(e));
     sel.innerHTML = '<option value="">— Select wallet —</option>';
-    syncFaucetWalletSelectFromSession();
+    syncPanelWalletSelectsFromSession();
     if (hint) {
       hint.textContent = m;
       hint.classList.add('hint-error');
@@ -268,6 +281,15 @@ async function managePost(path, body) {
     out.textContent = m;
     showDashboardError(m, 'Wallet / manage');
   }
+}
+
+function managePostWithCreds(path, extra = {}) {
+  const creds = manageWalletCreds();
+  if (!creds.walletId) {
+    showDashboardWarning('Select a wallet (Manage section or Session wallet in step 1).', 'Manage wallet');
+    return;
+  }
+  managePost(path, { ...creds, ...extra });
 }
 
 async function relayerPost(path, body) {
@@ -1002,9 +1024,11 @@ document.getElementById('wallet-select')?.addEventListener('change', (ev) => {
   const v = ev.target.value;
   if (v) localStorage.setItem(WALLET_STORAGE_KEY, v);
   else localStorage.removeItem(WALLET_STORAGE_KEY);
-  const faucetSel = document.getElementById('faucet-wallet-select');
-  if (faucetSel && [...faucetSel.options].some((o) => o.value === v)) {
-    faucetSel.value = v;
+  for (const id of PANEL_WALLET_SELECT_IDS) {
+    const panelSel = document.getElementById(id);
+    if (panelSel && [...panelSel.options].some((o) => o.value === v)) {
+      panelSel.value = v;
+    }
   }
 });
 
@@ -1039,25 +1063,24 @@ document.getElementById('btn-faucet')?.addEventListener('click', async () => {
 });
 
 document.getElementById('btn-manage-balance')?.addEventListener('click', () =>
-  managePost('/api/relayer/wallet/balance', walletSession())
+  managePostWithCreds('/api/relayer/wallet/balance')
 );
 document.getElementById('btn-manage-accounts')?.addEventListener('click', () =>
-  managePost('/api/relayer/wallet/accounts', {
-    ...walletSession(),
+  managePostWithCreds('/api/relayer/wallet/accounts', {
     onChainOnly: document.getElementById('relayer-onchain-only')?.checked,
   })
 );
 document.getElementById('btn-manage-info')?.addEventListener('click', () =>
-  managePost('/api/relayer/wallet/info', walletSession())
+  managePostWithCreds('/api/relayer/wallet/info')
 );
 document.getElementById('btn-manage-unlock')?.addEventListener('click', () =>
-  managePost('/api/relayer/wallet/unlock', walletSession())
+  managePostWithCreds('/api/relayer/wallet/unlock')
 );
 document.getElementById('btn-manage-lock')?.addEventListener('click', () =>
   managePost('/api/relayer/wallet/lock', {})
 );
 document.getElementById('btn-manage-sync-nonce')?.addEventListener('click', () =>
-  managePost('/api/relayer/wallet/sync-nonce', walletSession())
+  managePostWithCreds('/api/relayer/wallet/sync-nonce')
 );
 
 document.getElementById('btn-relayer-create')?.addEventListener('click', async () => {
