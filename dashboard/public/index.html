@@ -140,8 +140,31 @@
         <h2><span class="step-num">2</span> Testnet faucet (NYKS)</h2>
         <p class="muted" id="faucet-hint">
           Requires <code>FAUCET_BASE_URL</code> in <code>.env</code> (e.g. testnet
-          <code>https://faucet-rpc.twilight.rest</code>). Uses the same HTTP shape as nyks-wallet
-          (<code>POST /faucet</code>).
+          <code>https://faucet-rpc.twilight.rest</code>). The server runs
+          <code>relayer-cli wallet balance</code> to read your Twilight address, then calls the faucet HTTP API
+          (<code>POST /faucet</code>). If you leave the password blank here, the Session wallet password (or server
+          <code>NYKS_WALLET_PASSPHRASE</code>) is used.
+        </p>
+        <h3 class="subhead">Wallet for faucet</h3>
+        <div class="field-grid">
+          <label class="field wide">
+            <span>Wallet</span>
+            <select id="faucet-wallet-select">
+              <option value="">— Select wallet —</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Encryption password</span>
+            <input
+              type="password"
+              id="faucet-wallet-pass"
+              autocomplete="off"
+              placeholder="Same as Session wallet, or leave empty if in .env"
+            />
+          </label>
+        </div>
+        <p class="hint small" id="faucet-creds-hint">
+          List updates when you refresh wallets in step 1. Changing the session wallet also updates this dropdown.
         </p>
         <label class="inline-check">
           <input type="checkbox" id="chk-faucet-sats" />

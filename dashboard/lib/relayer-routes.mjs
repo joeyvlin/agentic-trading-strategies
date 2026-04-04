@@ -5,8 +5,8 @@ import { requestNyksTokens, requestTestSats } from './twilight-faucet.mjs';
 
 function creds(body) {
   const walletId = sanitizeString(body?.walletId ?? body?.wallet_id ?? '') || process.env.NYKS_WALLET_ID;
-  const password =
-    typeof body?.password === 'string' ? body.password : process.env.NYKS_WALLET_PASSPHRASE;
+  const pwBody = typeof body?.password === 'string' ? body.password.trim() : '';
+  const password = pwBody || process.env.NYKS_WALLET_PASSPHRASE;
   return { walletId, password };
 }
 
@@ -175,7 +175,7 @@ export function registerRelayerRoutes(app, { requireToken }) {
     }
     jsonHandler(
       res,
-      runRelayerCli(argv, { cwd: repoRoot }).then((r) => ({
+      runRelayerCli(argv, { cwd: repoRoot, allocatePseudoTty: true }).then((r) => ({
         ok: r.ok,
         ...r,
         warning:

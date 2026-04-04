@@ -12,6 +12,21 @@ function errMsg(e) {
   return String(e);
 }
 
+/** Fetch failed before a normal HTTP response (offline, DNS, blocked, etc.). */
+function isLikelyNetworkFailure(e) {
+  const m = errMsg(e);
+  return (
+    /^Network error:/i.test(m) ||
+    /failed to fetch|networkerror|load failed|err_network|aborted|econnrefused|enotfound/i.test(m)
+  );
+}
+
+/** Background polls skip surfacing transport failures; user actions always show errors. */
+function shouldSurfaceFetchError(e, opts = {}) {
+  if (opts.userAction) return true;
+  return !isLikelyNetworkFailure(e);
+}
+
 function parseApiErrorBody(text, status) {
   const st = status ?? '?';
   if (!text || !String(text).trim()) return `[${st}] (empty response body)`;
@@ -34,23 +49,10 @@ function parseApiErrorBody(text, status) {
   }
 }
 
-const dashboardErrorThrottle = new Map();
-
-/**
- * @param {string} message
- * @param {string} [context] Short label (e.g. "Save .env")
- * @param {{ throttle?: boolean }} [opts] Throttle repeated identical messages from background polls
- */
-function showDashboardError(message, context = '', opts = {}) {
+/** Toast for explicit user actions only (not polling / page load). */
+function showDashboardError(message, context = '') {
   const msg = String(message || 'Unknown error').trim() || 'Unknown error';
   const ctx = context || 'Error';
-  if (opts.throttle) {
-    const key = `${ctx}|${msg}`;
-    const prev = dashboardErrorThrottle.get(key);
-    const now = Date.now();
-    if (prev && now - prev < 32000) return;
-    dashboardErrorThrottle.set(key, now);
-  }
   const wrap = document.getElementById('dashboard-toasts');
   if (!wrap) return;
   const el = document.createElement('div');
@@ -147,6 +149,30 @@ function walletSession() {
   return o;
 }
 
+/** Wallet + password for faucet API: faucet fields first, then Session wallet. */
+function faucetWalletCreds() {
+  const faucetSel = document.getElementById('faucet-wallet-select');
+  const faucetPass = document.getElementById('faucet-wallet-pass');
+  const sessionSel = document.getElementById('wallet-select');
+  const sessionPass = document.getElementById('wallet-pass');
+  const walletId = (faucetSel?.value ?? sessionSel?.value ?? '').trim() || '';
+  const fp = faucetPass?.value?.trim() ?? '';
+  const sp = sessionPass?.value ?? '';
+  const password = fp || sp;
+  const o = {};
+  if (walletId) o.walletId = walletId;
+  if (password) o.password = password;
+  return o;
+}
+
+function syncFaucetWalletSelectFromSession() {
+  const sel = document.getElementById('wallet-select');
+  const faucetSel = document.getElementById('faucet-wallet-select');
+  if (!sel || !faucetSel) return;
+  faucetSel.innerHTML = sel.innerHTML;
+  faucetSel.value = sel.value;
+}
+
 function formatRelayerMissingMessage(raw) {
   const m = String(raw || '');
   if (/ENOENT|not found/i.test(m) && /relayer/i.test(m)) {
@@ -161,7 +187,7 @@ function formatRelayerMissingMessage(raw) {
   return m;
 }
 
-async function refreshWalletList(selectId = null) {
+async function refreshWalletList(selectId = null, opts = {}) {
   const sel = document.getElementById('wallet-select');
   const hint = document.getElementById('wallet-select-hint');
   const prev = selectId || localStorage.getItem(WALLET_STORAGE_KEY) || sel.value;
@@ -190,14 +216,17 @@ async function refreshWalletList(selectId = null) {
     sel.value = pick;
     if (pick) localStorage.setItem(WALLET_STORAGE_KEY, pick);
     else localStorage.removeItem(WALLET_STORAGE_KEY);
+    syncFaucetWalletSelectFromSession();
   } catch (e) {
+    if (!shouldSurfaceFetchError(e, opts)) return;
     const m = formatRelayerMissingMessage(errMsg(e));
     sel.innerHTML = '<option value="">— Select wallet —</option>';
+    syncFaucetWalletSelectFromSession();
     if (hint) {
       hint.textContent = m;
       hint.classList.add('hint-error');
     }
-    showDashboardError(m, 'Wallet list');
+    if (opts.userAction) showDashboardError(m, 'Wallet list');
   }
 }
 
@@ -214,12 +243,12 @@ async function loadRelayerMetaHints() {
       faucetHint.classList.toggle('warn', !m.faucetConfigured);
     }
   } catch (e) {
+    if (isLikelyNetworkFailure(e)) return;
     const m = errMsg(e);
     if (hint) {
       hint.textContent = m;
       hint.classList.add('hint-error');
     }
-    showDashboardError(m, 'Relayer meta', { throttle: true });
   }
 }
 
@@ -259,7 +288,7 @@ async function relayerPost(path, body) {
   }
 }
 
-async function refreshStatus() {
+async function refreshStatus(opts = {}) {
   const el = document.getElementById('status-line');
   const last = document.getElementById('last-cycle');
   if (!el) return;
@@ -283,14 +312,14 @@ async function refreshStatus() {
     }
     el.classList.remove('status-error');
   } catch (e) {
+    if (!shouldSurfaceFetchError(e, opts)) return;
     const m = errMsg(e);
     el.textContent = `Error loading status: ${m}`;
     el.classList.add('status-error');
-    showDashboardError(m, 'Agent status', { throttle: true });
   }
 }
 
-async function refreshPnl() {
+async function refreshPnl(opts = {}) {
   const el = document.getElementById('pnl-stats');
   const note = document.getElementById('pnl-note-line');
   const openBody = document.getElementById('positions-open-body');
@@ -348,15 +377,16 @@ async function refreshPnl() {
       }
     }
   } catch (e) {
+    if (!shouldSurfaceFetchError(e, opts)) return;
     const m = errMsg(e);
     if (el) el.innerHTML = `<dt>Error</dt><dd>${escapeHtml(m)}</dd>`;
     if (openBody) openBody.innerHTML = '';
     if (closedBody) closedBody.innerHTML = '';
-    showDashboardError(m, 'Agent PnL', { throttle: true });
+    if (opts.userAction) showDashboardError(m, 'Agent PnL');
   }
 }
 
-async function refreshTx() {
+async function refreshTx(opts = {}) {
   const body = document.getElementById('tx-body');
   if (!body) return;
   try {
@@ -378,26 +408,28 @@ async function refreshTx() {
       body.innerHTML = `<tr><td colspan="6">No transactions yet.</td></tr>`;
     }
   } catch (e) {
+    if (!shouldSurfaceFetchError(e, opts)) return;
     const m = errMsg(e);
     body.innerHTML = `<tr><td colspan="6">${escapeHtml(m)}</td></tr>`;
-    showDashboardError(m, 'Transactions', { throttle: true });
+    if (opts.userAction) showDashboardError(m, 'Transactions');
   }
 }
 
-async function refreshLogs() {
+async function refreshLogs(opts = {}) {
   const box = document.getElementById('log-box');
   if (!box) return;
   try {
     const { logs } = await readJson('/api/logs');
     box.textContent = logs.map((l) => `[${l.t}] ${l.level.toUpperCase()} ${l.msg}`).join('\n');
   } catch (e) {
+    if (!shouldSurfaceFetchError(e, opts)) return;
     const m = errMsg(e);
     box.textContent = m;
-    showDashboardError(m, 'Logs', { throttle: true });
+    if (opts.userAction) showDashboardError(m, 'Logs');
   }
 }
 
-async function loadConfig() {
+async function loadConfig(opts = {}) {
   const ta = document.getElementById('config-yaml');
   const msg = document.getElementById('config-msg');
   if (!ta) return;
@@ -409,12 +441,13 @@ async function loadConfig() {
     const c = await readJson('/api/config');
     ta.value = c.content;
   } catch (e) {
+    if (!shouldSurfaceFetchError(e, opts)) return;
     const m = errMsg(e);
     if (msg) {
       msg.textContent = m;
       msg.classList.add('hint-error');
     }
-    showDashboardError(m, 'Load config');
+    if (opts.userAction) showDashboardError(m, 'Load config');
   }
 }
 
@@ -442,15 +475,15 @@ async function runStrategyExecute(strategyId, mode) {
     } else {
       alert(r.transaction ? `Trade recorded: ${r.transaction.tradeId}` : 'Done.');
     }
-    await refreshPnl();
-    await refreshTx();
-    await refreshStatus();
+    await refreshPnl({ userAction: true });
+    await refreshTx({ userAction: true });
+    await refreshStatus({ userAction: true });
   } catch (e) {
     showDashboardError(errMsg(e), 'Strategy run');
   }
 }
 
-async function refreshStrategies() {
+async function refreshStrategies(opts = {}) {
   const tbody = document.getElementById('strategies-body');
   const meta = document.getElementById('strategies-meta');
   try {
@@ -479,14 +512,15 @@ async function refreshStrategies() {
       meta.textContent = `Updated ${fmtTime(data.timestamp)} · BTC ~ $${data.btcPrice != null ? Number(data.btcPrice).toLocaleString() : '—'} · ${data.count ?? rows.length} rows`;
     }
   } catch (e) {
+    if (!shouldSurfaceFetchError(e, opts)) return;
     const m = errMsg(e);
     tbody.innerHTML = `<tr><td colspan="8">${escapeHtml(m)}</td></tr>`;
     if (meta) meta.textContent = '';
-    showDashboardError(m, 'Best trades', { throttle: true });
+    if (opts.userAction) showDashboardError(m, 'Best trades');
   }
 }
 
-async function refreshJournal() {
+async function refreshJournal(opts = {}) {
   const tbody = document.getElementById('journal-body');
   const sumEl = document.getElementById('journal-summary');
   if (!tbody) return;
@@ -515,14 +549,15 @@ async function refreshJournal() {
     `;
     }
   } catch (e) {
+    if (!shouldSurfaceFetchError(e, opts)) return;
     const m = errMsg(e);
     tbody.innerHTML = `<tr><td colspan="6">${escapeHtml(m)}</td></tr>`;
     if (sumEl) sumEl.innerHTML = `<dt>Error</dt><dd>${escapeHtml(m)}</dd>`;
-    showDashboardError(m, 'Journal', { throttle: true });
+    if (opts.userAction) showDashboardError(m, 'Journal');
   }
 }
 
-async function loadAgentSettings() {
+async function loadAgentSettings(opts = {}) {
   const msg = document.getElementById('agent-settings-msg');
   try {
     const s = await readJson('/api/agent/settings');
@@ -544,12 +579,13 @@ async function loadAgentSettings() {
       msg.classList.remove('hint-error');
     }
   } catch (e) {
+    if (!shouldSurfaceFetchError(e, opts)) return;
     const m = errMsg(e);
     if (msg) {
       msg.textContent = m;
       msg.classList.add('hint-error');
     }
-    showDashboardError(m, 'Agent settings');
+    if (opts.userAction) showDashboardError(m, 'Agent settings');
   }
 }
 
@@ -587,7 +623,9 @@ document.getElementById('btn-save-agent')?.addEventListener('click', async () =>
   }
 });
 
-document.getElementById('btn-reload-agent')?.addEventListener('click', loadAgentSettings);
+document.getElementById('btn-reload-agent')?.addEventListener('click', () =>
+  loadAgentSettings({ userAction: true })
+);
 
 document.getElementById('sec-strategies')?.addEventListener('click', (ev) => {
   const b = ev.target.closest('.strategy-exec');
@@ -619,13 +657,13 @@ document.getElementById('positions-open-body')?.addEventListener('click', async 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ realizedPnlUsd: num }),
     });
-    await refreshPnl();
+    await refreshPnl({ userAction: true });
   } catch (e) {
     showDashboardError(errMsg(e), 'Close position');
   }
 });
 
-document.getElementById('btn-pnl-refresh')?.addEventListener('click', refreshPnl);
+document.getElementById('btn-pnl-refresh')?.addEventListener('click', () => refreshPnl({ userAction: true }));
 
 function envStatusBadge(row) {
   if (!row.hasValue) {
@@ -739,13 +777,13 @@ async function refreshEnv() {
     }
     root.innerHTML = html || '<p class="muted">No fields.</p>';
   } catch (e) {
+    if (isLikelyNetworkFailure(e)) return;
     const m = errMsg(e);
     root.innerHTML = `<p class="hint hint-error">${escapeHtml(m)}</p>`;
     if (msg) {
       msg.textContent = m;
       msg.classList.add('hint-error');
     }
-    showDashboardError(m, 'Environment', { throttle: true });
   }
 }
 
@@ -775,9 +813,9 @@ async function refreshEnvRawIfVisible() {
       ? data.content
       : '(No file yet — save the form above to create .env.)';
   } catch (e) {
+    if (isLikelyNetworkFailure(e)) return;
     const m = errMsg(e);
     pre.textContent = m;
-    showDashboardError(m, 'View raw .env');
   }
 }
 
@@ -931,7 +969,7 @@ document.getElementById('btn-env-example-key')?.addEventListener('click', async 
   }
 });
 
-async function loadExchangeStatus() {
+async function loadExchangeStatus(opts = {}) {
   const el = document.getElementById('exchange-status');
   if (!el) return;
   try {
@@ -943,10 +981,11 @@ async function loadExchangeStatus() {
     el.textContent = `Binance: ${m.binance?.configured ? 'saved (' + (m.binance.apiKeySuffix || 'key') + ')' : 'not set'} · Bybit: ${m.bybit?.configured ? 'saved (' + (m.bybit.apiKeySuffix || 'key') + ')' : 'not set'}`;
     el.classList.remove('hint-error');
   } catch (e) {
+    if (!shouldSurfaceFetchError(e, opts)) return;
     const m = errMsg(e);
     el.textContent = m;
     el.classList.add('hint-error');
-    showDashboardError(m, 'CEX keys status', { throttle: true });
+    if (opts.userAction) showDashboardError(m, 'CEX keys status');
   }
 }
 
@@ -954,7 +993,7 @@ document.getElementById('btn-save-token')?.addEventListener('click', () => {
   const v = document.getElementById('dash-token').value.trim();
   if (v) localStorage.setItem('dashboardToken', v);
   else localStorage.removeItem('dashboardToken');
-  refreshStatus();
+  refreshStatus({ userAction: true });
   refreshWalletList();
   refreshEnv();
 });
@@ -963,12 +1002,23 @@ document.getElementById('wallet-select')?.addEventListener('change', (ev) => {
   const v = ev.target.value;
   if (v) localStorage.setItem(WALLET_STORAGE_KEY, v);
   else localStorage.removeItem(WALLET_STORAGE_KEY);
+  const faucetSel = document.getElementById('faucet-wallet-select');
+  if (faucetSel && [...faucetSel.options].some((o) => o.value === v)) {
+    faucetSel.value = v;
+  }
 });
 
-document.getElementById('btn-wallet-refresh')?.addEventListener('click', () => refreshWalletList());
+document.getElementById('btn-wallet-refresh')?.addEventListener('click', () =>
+  refreshWalletList(null, { userAction: true })
+);
 
 document.getElementById('btn-faucet')?.addEventListener('click', async () => {
   const out = document.getElementById('faucet-out');
+  const creds = faucetWalletCreds();
+  if (!creds.walletId) {
+    showDashboardWarning('Select a wallet for the faucet (dropdown in this section or Session wallet in step 1).', 'Faucet');
+    return;
+  }
   out.hidden = false;
   out.textContent = 'Requesting…';
   try {
@@ -976,7 +1026,7 @@ document.getElementById('btn-faucet')?.addEventListener('click', async () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        ...walletSession(),
+        ...creds,
         mintTestSats: document.getElementById('chk-faucet-sats')?.checked === true,
       }),
     });
@@ -1026,7 +1076,7 @@ document.getElementById('btn-relayer-create')?.addEventListener('click', async (
       body: JSON.stringify(body),
     });
     out.textContent = JSON.stringify(r, null, 2);
-    await refreshWalletList(walletId);
+    await refreshWalletList(walletId, { userAction: true });
   } catch (e) {
     const m = errMsg(e);
     out.textContent = m;
@@ -1067,11 +1117,17 @@ document.getElementById('btn-save-exchange')?.addEventListener('click', async ()
   }
 });
 
-document.getElementById('btn-reload-exchange')?.addEventListener('click', loadExchangeStatus);
+document.getElementById('btn-reload-exchange')?.addEventListener('click', () =>
+  loadExchangeStatus({ userAction: true })
+);
 
-document.getElementById('btn-strategies-refresh')?.addEventListener('click', refreshStrategies);
+document.getElementById('btn-strategies-refresh')?.addEventListener('click', () =>
+  refreshStrategies({ userAction: true })
+);
 
-document.getElementById('btn-journal-refresh')?.addEventListener('click', refreshJournal);
+document.getElementById('btn-journal-refresh')?.addEventListener('click', () =>
+  refreshJournal({ userAction: true })
+);
 document.getElementById('btn-journal-add')?.addEventListener('click', async () => {
   try {
     await readJson('/api/trade-journal', {
@@ -1115,7 +1171,7 @@ document.getElementById('journal-body')?.addEventListener('click', async (ev) =>
 document.getElementById('btn-start')?.addEventListener('click', async () => {
   try {
     await readJson('/api/monitor/start', { method: 'POST' });
-    await refreshStatus();
+    await refreshStatus({ userAction: true });
   } catch (e) {
     showDashboardError(errMsg(e), 'Start monitor');
   }
@@ -1124,7 +1180,7 @@ document.getElementById('btn-start')?.addEventListener('click', async () => {
 document.getElementById('btn-stop')?.addEventListener('click', async () => {
   try {
     await readJson('/api/monitor/stop', { method: 'POST' });
-    await refreshStatus();
+    await refreshStatus({ userAction: true });
   } catch (e) {
     showDashboardError(errMsg(e), 'Stop monitor');
   }
@@ -1137,9 +1193,9 @@ document.getElementById('btn-sim-once')?.addEventListener('click', async () => {
   try {
     const r = await readJson('/api/simulation/run-once', { method: 'POST' });
     out.textContent = JSON.stringify(r, null, 2);
-    await refreshPnl();
-    await refreshTx();
-    await refreshStatus();
+    await refreshPnl({ userAction: true });
+    await refreshTx({ userAction: true });
+    await refreshStatus({ userAction: true });
   } catch (e) {
     const m = errMsg(e);
     out.textContent = m;
@@ -1170,22 +1226,22 @@ document.getElementById('btn-save-config')?.addEventListener('click', async () =
   }
 });
 
-document.getElementById('btn-reload-config')?.addEventListener('click', loadConfig);
-document.getElementById('btn-refresh-tx')?.addEventListener('click', refreshTx);
-document.getElementById('btn-refresh-logs')?.addEventListener('click', refreshLogs);
+document.getElementById('btn-reload-config')?.addEventListener('click', () => loadConfig({ userAction: true }));
+document.getElementById('btn-refresh-tx')?.addEventListener('click', () => refreshTx({ userAction: true }));
+document.getElementById('btn-refresh-logs')?.addEventListener('click', () => refreshLogs({ userAction: true }));
 
 document.getElementById('btn-reset-portfolio')?.addEventListener('click', async () => {
   if (!confirm('Clear in-memory portfolio snapshot? Transaction history file is unchanged.')) return;
   try {
     await readJson('/api/portfolio/reset', { method: 'POST' });
-    await refreshPnl();
-    await refreshStatus();
+    await refreshPnl({ userAction: true });
+    await refreshStatus({ userAction: true });
   } catch (e) {
     showDashboardError(errMsg(e), 'Reset portfolio');
   }
 });
 
-async function loadRelayerMeta() {
+async function loadRelayerMeta(opts = {}) {
   const hint = document.getElementById('relayer-binary-hint');
   const gate = document.getElementById('relayer-gate-hint');
   const line = document.getElementById('relayer-meta-line');
@@ -1200,14 +1256,17 @@ async function loadRelayerMeta() {
         'Uses relayer-cli with repo .env. Optional NYKS_WALLET_ID / NYKS_WALLET_PASSPHRASE; session wallet above overrides.';
     }
   } catch (e) {
+    if (!shouldSurfaceFetchError(e, opts)) return;
     const m = errMsg(e);
     hint.textContent = m;
     hint.classList.add('hint-error');
-    showDashboardError(m, 'Relayer meta');
+    if (opts.userAction) showDashboardError(m, 'Relayer meta');
   }
 }
 
-document.getElementById('btn-relayer-meta')?.addEventListener('click', loadRelayerMeta);
+document.getElementById('btn-relayer-meta')?.addEventListener('click', () =>
+  loadRelayerMeta({ userAction: true })
+);
 
 document.getElementById('btn-relayer-ping')?.addEventListener('click', () => relayerPost('/api/relayer/ping'));
 document.getElementById('btn-relayer-mstats')?.addEventListener('click', () =>
