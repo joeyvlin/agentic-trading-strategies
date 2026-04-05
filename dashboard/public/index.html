@@ -599,6 +599,53 @@
       </details>
     </main>
 
+    <div
+      id="modal-real-trade"
+      class="modal-overlay"
+      hidden
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-real-trade-title"
+    >
+      <div class="modal-dialog card">
+        <div class="modal-head">
+          <h2 id="modal-real-trade-title" class="modal-title">Real trade — deployment size</h2>
+          <button type="button" class="btn ghost small modal-close" id="modal-real-trade-dismiss" aria-label="Close">
+            ×
+          </button>
+        </div>
+        <p class="modal-strategy-line" id="modal-real-trade-strategy"></p>
+        <p class="hint" id="modal-real-trade-template"></p>
+        <label class="field wide">
+          <span>Total to deploy (USD)</span>
+          <input type="number" id="modal-real-total-usd" min="1" step="100" />
+        </label>
+        <div class="btn-row modal-presets">
+          <span class="muted small">Scale template:</span>
+          <button type="button" class="btn small ghost" data-preset-pct="25">25%</button>
+          <button type="button" class="btn small ghost" data-preset-pct="50">50%</button>
+          <button type="button" class="btn small ghost" data-preset-pct="100">100%</button>
+        </div>
+        <div class="modal-balance-block">
+          <button type="button" class="btn small" id="modal-real-fetch-balance">Load wallet balance snapshot</button>
+          <p class="hint small" id="modal-real-balance-hint">
+            Uses credentials from <strong>Manage wallet</strong> (step 3) or Session wallet. Raw relayer output for
+            your reference — not financial advice.
+          </p>
+          <pre class="out out-compact modal-balance-pre" id="modal-real-balance-out" hidden></pre>
+        </div>
+        <p class="hint small">
+          Requires CEX / relayer setup and <code>CONFIRM_REAL_TRADING=YES</code> for live orders. Leg sizes scale
+          proportionally vs the strategy template (Twilight + CEX notionals).
+        </p>
+        <div class="btn-row modal-actions">
+          <button type="button" class="btn" id="modal-real-cancel">Cancel</button>
+          <button type="button" class="btn primary danger" id="modal-real-run">Run real trade</button>
+        </div>
+      </div>
+    </div>
+
     <script src="/app.js" type="module"></script>
   </body>
 </html>

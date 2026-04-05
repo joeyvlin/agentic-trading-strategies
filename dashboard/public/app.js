@@ -473,8 +473,89 @@ async function loadConfig(opts = {}) {
   }
 }
 
-async function runStrategyExecute(strategyId, mode) {
-  if (mode === 'real') {
+function encodeStrategyMetaForBtn(s) {
+  try {
+    const o = {
+      id: s.id,
+      name: String(s.name || ''),
+      twilightSize: Number(s.twilightSize) || 0,
+      binanceSize: Number(s.binanceSize) || 0,
+      apy: s.apy,
+    };
+    return btoa(unescape(encodeURIComponent(JSON.stringify(o))));
+  } catch {
+    return '';
+  }
+}
+
+function decodeStrategyMetaFromBtn(b64) {
+  if (!b64 || typeof b64 !== 'string') return null;
+  try {
+    const json = decodeURIComponent(escape(atob(b64)));
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+function strategyTemplateTotalUsd(meta) {
+  if (!meta) return 0;
+  return (Number(meta.twilightSize) || 0) + (Number(meta.binanceSize) || 0);
+}
+
+let realTradeModalState = null;
+
+function closeRealTradeModal() {
+  const el = document.getElementById('modal-real-trade');
+  const pre = document.getElementById('modal-real-balance-out');
+  if (el) {
+    el.hidden = true;
+    el.setAttribute('aria-hidden', 'true');
+  }
+  if (pre) {
+    pre.hidden = true;
+    pre.textContent = '';
+  }
+  realTradeModalState = null;
+}
+
+function openRealTradeModal(strategyId, meta) {
+  realTradeModalState = { strategyId, meta };
+  const overlay = document.getElementById('modal-real-trade');
+  const line = document.getElementById('modal-real-trade-strategy');
+  const tmpl = document.getElementById('modal-real-trade-template');
+  const input = document.getElementById('modal-real-total-usd');
+  if (!overlay || !line || !tmpl || !input) return;
+  const tw = Number(meta?.twilightSize) || 0;
+  const cx = Number(meta?.binanceSize) || 0;
+  const total = tw + cx;
+  line.textContent = `#${strategyId} ${meta?.name || 'Strategy'}`;
+  tmpl.textContent =
+    total > 0
+      ? `Template notionals: Twilight $${tw.toLocaleString()} · CEX $${cx.toLocaleString()} · total $${total.toLocaleString()}`
+      : 'Template shows $0 notionals — enter any positive total you want the agent to size toward.';
+  input.value = total > 0 ? String(Math.round(total)) : '1000';
+  overlay.hidden = false;
+  overlay.setAttribute('aria-hidden', 'false');
+  input.focus();
+  input.select();
+}
+
+function setRealTradePresetPercent(pct) {
+  if (!realTradeModalState?.meta) return;
+  const base = strategyTemplateTotalUsd(realTradeModalState.meta);
+  const input = document.getElementById('modal-real-total-usd');
+  if (!input) return;
+  if (base <= 0) {
+    showDashboardWarning('No template notionals to scale; set total USD manually.', 'Real trade');
+    return;
+  }
+  input.value = String(Math.max(1, Math.round((base * pct) / 100)));
+}
+
+async function runStrategyExecute(strategyId, mode, options = {}) {
+  const { targetTotalNotionalUsd, skipRealConfirm } = options;
+  if (mode === 'real' && !skipRealConfirm) {
     if (
       !confirm(
         'Run REAL execution for this strategy? Requires API keys, relayer if Twilight leg is used, and CONFIRM_REAL_TRADING=YES for live orders.'
@@ -484,10 +565,15 @@ async function runStrategyExecute(strategyId, mode) {
     }
   }
   try {
+    const body = { strategyId, mode };
+    const t = targetTotalNotionalUsd != null ? Number(targetTotalNotionalUsd) : NaN;
+    if (Number.isFinite(t) && t > 0) {
+      body.targetTotalNotionalUsd = t;
+    }
     const r = await readJson('/api/monitor/run-strategy', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ strategyId, mode }),
+      body: JSON.stringify(body),
     });
     if (r.skipped) {
       showDashboardWarning(
@@ -524,7 +610,7 @@ async function refreshStrategies(opts = {}) {
         <td>${escapeHtml(s.twilightPosition || '')} ${s.twilightLeverage ? s.twilightLeverage + 'x' : ''}</td>
         <td class="strategy-actions">
           <button type="button" class="btn small strategy-exec" data-sid="${s.id}" data-mode="simulation">Sim</button>
-          <button type="button" class="btn small danger strategy-exec" data-sid="${s.id}" data-mode="real">Real</button>
+          <button type="button" class="btn small danger strategy-exec" data-sid="${s.id}" data-mode="real" data-strategy-meta="${encodeStrategyMetaForBtn(s)}">Real</button>
         </td>
       </tr>`
       )
@@ -654,7 +740,71 @@ document.getElementById('sec-strategies')?.addEventListener('click', (ev) => {
   if (!b) return;
   const sid = b.getAttribute('data-sid');
   const mode = b.getAttribute('data-mode');
-  if (sid) runStrategyExecute(Number(sid), mode);
+  if (!sid) return;
+  const idNum = Number(sid);
+  if (mode === 'real') {
+    const metaB64 = b.getAttribute('data-strategy-meta');
+    const meta = metaB64 ? decodeStrategyMetaFromBtn(metaB64) : null;
+    if (meta) {
+      openRealTradeModal(idNum, { ...meta, id: idNum });
+      return;
+    }
+  }
+  runStrategyExecute(idNum, mode);
+});
+
+document.getElementById('modal-real-trade-dismiss')?.addEventListener('click', closeRealTradeModal);
+document.getElementById('modal-real-cancel')?.addEventListener('click', closeRealTradeModal);
+document.getElementById('modal-real-trade')?.addEventListener('click', (ev) => {
+  if (ev.target.id === 'modal-real-trade') closeRealTradeModal();
+});
+document.getElementById('modal-real-trade')?.addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-preset-pct]');
+  if (!b) return;
+  setRealTradePresetPercent(Number(b.getAttribute('data-preset-pct')));
+});
+document.getElementById('modal-real-run')?.addEventListener('click', async () => {
+  const st = realTradeModalState;
+  if (!st) return;
+  const input = document.getElementById('modal-real-total-usd');
+  const total = Number(input?.value);
+  if (!Number.isFinite(total) || total <= 0) {
+    showDashboardWarning('Enter a positive total USD to deploy.', 'Real trade');
+    return;
+  }
+  closeRealTradeModal();
+  await runStrategyExecute(st.strategyId, 'real', {
+    targetTotalNotionalUsd: total,
+    skipRealConfirm: true,
+  });
+});
+document.getElementById('modal-real-fetch-balance')?.addEventListener('click', async () => {
+  const pre = document.getElementById('modal-real-balance-out');
+  const creds = manageWalletCreds();
+  if (!creds.walletId) {
+    showDashboardWarning('Select a wallet (Manage wallet or Session) before loading balance.', 'Real trade');
+    return;
+  }
+  if (pre) {
+    pre.hidden = false;
+    pre.textContent = 'Loading…';
+  }
+  try {
+    const r = await readJson('/api/relayer/wallet/balance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(creds),
+    });
+    if (pre) pre.textContent = r.stdout || r.stderr || JSON.stringify(r, null, 2);
+  } catch (e) {
+    if (pre) pre.textContent = errMsg(e);
+  }
+});
+
+document.addEventListener('keydown', (ev) => {
+  const modal = document.getElementById('modal-real-trade');
+  if (ev.key !== 'Escape' || !modal || modal.hidden) return;
+  closeRealTradeModal();
 });
 
 document.getElementById('positions-open-body')?.addEventListener('click', async (ev) => {

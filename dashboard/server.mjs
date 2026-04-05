@@ -96,11 +96,20 @@ app.post('/api/positions/:tradeId/close', requireToken, (req, res) => {
 app.post('/api/monitor/run-strategy', requireToken, async (req, res) => {
   const strategyId = req.body?.strategyId ?? req.body?.strategy_id;
   const mode = req.body?.mode;
+  const rawTarget = req.body?.targetTotalNotionalUsd ?? req.body?.target_total_notional_usd;
+  let targetTotalNotionalUsd;
+  if (rawTarget !== undefined && rawTarget !== null && rawTarget !== '') {
+    const n = Number(rawTarget);
+    if (!Number.isFinite(n) || n <= 0) {
+      return res.status(400).json({ error: 'targetTotalNotionalUsd must be a positive number' });
+    }
+    targetTotalNotionalUsd = n;
+  }
   if (strategyId === undefined || strategyId === null || strategyId === '') {
     return res.status(400).json({ error: 'strategyId is required' });
   }
   try {
-    const result = await monitor.runStrategyOnce(strategyId, mode);
+    const result = await monitor.runStrategyOnce(strategyId, mode, targetTotalNotionalUsd);
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message || String(e) });

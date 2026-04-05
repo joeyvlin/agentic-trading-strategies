@@ -24,6 +24,27 @@ export function estimateVenueNotionals(strategy) {
   };
 }
 
+/**
+ * Scale twilightSize and binanceSize so venue notionals sum to targetTotalUsd (same leg mix as template).
+ * If template total is 0 or target invalid, returns a shallow copy of strategy unchanged.
+ */
+export function scaleStrategyToTargetTotalNotional(strategy, targetTotalUsd) {
+  const target = Number(targetTotalUsd);
+  if (!Number.isFinite(target) || target <= 0) {
+    return { ...strategy };
+  }
+  const n = estimateVenueNotionals(strategy);
+  if (n.total <= 0) {
+    return { ...strategy };
+  }
+  const scale = target / n.total;
+  return {
+    ...strategy,
+    twilightSize: (Number(strategy.twilightSize) || 0) * scale,
+    binanceSize: (Number(strategy.binanceSize) || 0) * scale,
+  };
+}
+
 export function pickTopStrategy(strategies, { maxApyFirst = true } = {}) {
   const list = Array.isArray(strategies) ? [...strategies] : [];
   if (maxApyFirst) {

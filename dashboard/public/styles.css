@@ -737,3 +737,76 @@ pre.out-compact {
 .small {
   font-size: 0.82rem;
 }
+
+/* Real trade sizing modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(6, 8, 12, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.modal-overlay[hidden] {
+  display: none !important;
+}
+
+.modal-dialog {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 26rem;
+  max-height: min(90vh, 40rem);
+  overflow: auto;
+  margin: 0;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+}
+
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.modal-title {
+  font-family: var(--display);
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0;
+  line-height: 1.25;
+}
+
+.modal-strategy-line {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+
+.modal-presets {
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 0.35rem;
+}
+
+.modal-balance-block {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.modal-balance-pre {
+  margin-top: 0.5rem;
+  max-height: 10rem;
+  overflow: auto;
+  font-size: 0.75rem;
+}
+
+.modal-actions {
+  margin-top: 1.25rem;
+  justify-content: flex-end;
+}

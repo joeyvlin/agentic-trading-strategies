@@ -180,7 +180,7 @@ export function createMonitorService() {
      * @param {number|string} strategyId
      * @param {'simulation'|'real'|undefined} executionModeOverride
      */
-    runStrategyOnce: async (strategyId, executionModeOverride) => {
+    runStrategyOnce: async (strategyId, executionModeOverride, targetTotalNotionalUsd) => {
       lastError = null;
       const config = loadAgentConfig(logger, { executionMode: executionModeOverride });
       if (config.executionMode === 'real' && process.env.CONFIRM_REAL_TRADING !== 'YES') {
@@ -193,6 +193,7 @@ export function createMonitorService() {
         config,
         portfolio,
         logger,
+        targetTotalNotionalUsd,
       });
       lastCycle = {
         at: new Date().toISOString(),
