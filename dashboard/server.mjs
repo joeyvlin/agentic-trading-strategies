@@ -22,7 +22,8 @@ const configFile = path.join(repoRoot, 'configs', 'agent.monitor.yaml');
 const monitor = createMonitorService();
 const app = express();
 const PORT = Number(process.env.DASHBOARD_PORT) || 3847;
-const HOST = process.env.DASHBOARD_HOST || '127.0.0.1';
+/** Unset = Node default bind (all interfaces; avoids IPv6 `localhost` vs `127.0.0.1` mismatches). */
+const HOST = process.env.DASHBOARD_HOST?.trim() || '';
 const TOKEN = process.env.DASHBOARD_TOKEN || '';
 
 app.use(
@@ -172,8 +173,18 @@ registerEnvRoutes(app, { requireToken });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.listen(PORT, HOST, () => {
-  console.log(
-    `[dashboard] http://${HOST}:${PORT}  (token: ${TOKEN ? 'required' : 'off'})`
-  );
-});
+const onListen = () => {
+  const tokenNote = TOKEN ? 'token: required' : 'token: off';
+  if (HOST) {
+    console.log(`[dashboard] http://${HOST}:${PORT}  (${tokenNote})`);
+  } else {
+    console.log(
+      `[dashboard] port ${PORT}  (${tokenNote}) — try http://127.0.0.1:${PORT} or http://localhost:${PORT}`
+    );
+  }
+};
+if (HOST) {
+  app.listen(PORT, HOST, onListen);
+} else {
+  app.listen(PORT, onListen);
+}

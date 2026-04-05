@@ -25,7 +25,7 @@ Open **http://127.0.0.1:3847** (default). The API binds to **localhost only** fo
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `DASHBOARD_PORT` | `3847` | HTTP port |
-| `DASHBOARD_HOST` | `127.0.0.1` | Bind address (avoid `0.0.0.0` unless you know the risk) |
+| `DASHBOARD_HOST` | _(unset)_ | Omit to bind all interfaces (avoids some `localhost` vs `127.0.0.1` / IPv6 issues). Set `127.0.0.1` to restrict to loopback. |
 | `DASHBOARD_TOKEN` | _(empty)_ | If set, all `/api/*` routes except `/api/health` require header `x-dashboard-token` |
 | `STRATEGY_API_KEY` | — | From repo `.env` (loaded by the monitor service) |
 | `CONFIRM_REAL_TRADING` | — | Required `YES` in `.env` if yaml `execution.mode` is `real` |

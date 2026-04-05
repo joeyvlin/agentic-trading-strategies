@@ -995,7 +995,7 @@ async function loadExchangeStatus(opts = {}) {
   const el = document.getElementById('exchange-status');
   if (!el) return;
   try {
-    const m = await readJson('/api/exchange-keys');
+    const m = await readJson('/api/venue-api-keys');
     const bk = document.getElementById('binance-testnet');
     const bt = document.getElementById('bybit-testnet');
     if (bk) bk.checked = !!m.binance?.useTestnet;
@@ -1110,7 +1110,7 @@ document.getElementById('btn-relayer-create')?.addEventListener('click', async (
 document.getElementById('btn-save-exchange')?.addEventListener('click', async () => {
   const el = document.getElementById('exchange-status');
   try {
-    const r = await readJson('/api/exchange-keys', {
+    const r = await readJson('/api/venue-api-keys', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

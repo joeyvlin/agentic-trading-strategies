@@ -59,7 +59,7 @@ export const ENV_DEFS = [
     key: 'DASHBOARD_HOST',
     group: 'dashboard',
     label: 'Bind host',
-    help: '127.0.0.1 recommended (localhost only).',
+    help: 'Leave empty to listen on all interfaces (recommended if http://localhost fails but 127.0.0.1 works). Set 127.0.0.1 to restrict to IPv4 loopback only.',
     type: 'text',
   },
   {

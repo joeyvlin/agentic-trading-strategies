@@ -14,18 +14,22 @@ import { getStrategyApiEnv } from './env-store.mjs';
  * @param {{ requireToken: import('express').RequestHandler }} opts
  */
 export function registerDashboardDataRoutes(app, { requireToken }) {
-  app.get('/api/exchange-keys', requireToken, (_req, res) => {
+  const getExchangeKeys = (_req, res) => {
     res.json(maskedExchangeKeysForClient());
-  });
-
-  app.put('/api/exchange-keys', requireToken, (req, res) => {
+  };
+  const putExchangeKeys = (req, res) => {
     try {
       const masked = saveExchangeKeys(req.body || {});
       res.json({ ok: true, ...masked });
     } catch (e) {
       res.status(500).json({ error: e.message || String(e) });
     }
-  });
+  };
+  // Primary path avoids "exchange" in the URL (some browser extensions block that substring).
+  app.get('/api/venue-api-keys', requireToken, getExchangeKeys);
+  app.put('/api/venue-api-keys', requireToken, putExchangeKeys);
+  app.get('/api/exchange-keys', requireToken, getExchangeKeys);
+  app.put('/api/exchange-keys', requireToken, putExchangeKeys);
 
   app.get('/api/trade-journal', requireToken, (_req, res) => {
     res.json(getTradeJournal());
