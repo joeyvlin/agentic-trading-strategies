@@ -28,6 +28,7 @@ RUN chmod +x /app/tools/relayer-cli
 
 COPY agents/ /app/agents/
 COPY configs/ /app/configs/
+COPY scripts/ /app/scripts/
 COPY dashboard/ /app/dashboard/
 
 WORKDIR /app/agents/twilight-strategy-monitor
