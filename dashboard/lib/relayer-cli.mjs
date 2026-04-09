@@ -34,13 +34,16 @@ function pseudoTtySpawnArgs(bin, argv) {
 }
 
 /**
- * Resolve relayer-cli: env TWILIGHT_RELAYER_CLI, then sibling `../nyks-wallet/target/release/relayer-cli`, else PATH.
+ * Resolve relayer-cli: env TWILIGHT_RELAYER_CLI, then `tools/relayer-cli` (postinstall/Docker),
+ * then sibling `../nyks-wallet/target/release/relayer-cli`, else PATH.
  */
 export function getRelayerBinary() {
   const fromEnv = process.env.TWILIGHT_RELAYER_CLI;
   if (fromEnv && String(fromEnv).trim()) return String(fromEnv).trim();
   try {
     const root = getRepoRoot();
+    const toolsBin = path.join(root, 'tools', 'relayer-cli');
+    if (fs.existsSync(toolsBin)) return toolsBin;
     const sibling = path.join(path.dirname(root), 'nyks-wallet', 'target', 'release', 'relayer-cli');
     if (fs.existsSync(sibling)) return sibling;
   } catch {

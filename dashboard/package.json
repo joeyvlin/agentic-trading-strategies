@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "postinstall": "node ../scripts/install-relayer-cli.mjs",
     "start": "node server.mjs"
   },
   "dependencies": {

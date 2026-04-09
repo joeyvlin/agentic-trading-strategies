@@ -36,6 +36,9 @@ dist/
 build/
 *.egg-info/
 
+# Downloaded / built relayer-cli (see scripts/install-relayer-cli.mjs)
+tools/relayer-cli
+
 # Tooling
 coverage/
 .coverage
