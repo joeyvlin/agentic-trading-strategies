@@ -153,7 +153,7 @@ export const ENV_DEFS = [
     key: 'NYKS_WALLET_ID',
     group: 'wallet',
     label: 'Default wallet ID',
-    help: 'Stored wallet id in relayer-cli DB; optional if you always pick in the UI.',
+    help: 'Must match a wallet already created or imported on this machine (`relayer-cli wallet list`); relayer stores wallets per user/HOME.',
     type: 'text',
   },
   {
@@ -175,22 +175,24 @@ export const ENV_DEFS = [
     key: 'ALLOW_TWILIGHT_CLI_EXECUTION',
     group: 'relayer_exec',
     label: 'Allow real Twilight CLI orders',
-    help: 'Set to 1 for agent real mode to run relayer open-trade.',
+    help: 'Optional override: 1 forces Twilight open-trade in real mode; 0 disables. If unset, real runs use Twilight when “Allow real trading” (CONFIRM_REAL_TRADING) is on.',
     type: 'text',
   },
   {
     key: 'TWILIGHT_ACCOUNT_INDEX',
     group: 'relayer_exec',
     label: 'ZkOS account index',
-    help: 'Default account index for Twilight leg in real execution.',
+    help: 'Account must already exist (fund via zkaccount if new). List indices with wallet accounts / relayer-cli. Default 0 often fails until funded.',
     type: 'text',
   },
   {
     key: 'RELAYER_ALLOW_DASHBOARD_ZK',
     group: 'relayer_exec',
     label: 'Dashboard ZkOS (fund/transfer)',
-    help: 'YES to allow ZkOS actions from this dashboard.',
+    help: 'YES to allow ZkOS fund/transfer from this dashboard. Prefer the toggle in ZkOS (step 3b).',
     type: 'text',
+    /** Controlled from ZkOS section (toggle); omitted from Environment form to avoid duplication. */
+    hideFromEnvForm: true,
   },
   {
     key: 'RELAYER_ALLOW_DASHBOARD_ORDERS',
@@ -269,6 +271,8 @@ export const ENV_DEFS = [
     label: 'Confirm real trading',
     help: 'Must be YES to start the monitor or run real execution against exchanges.',
     type: 'text',
+    /** Controlled from Twilight wallet section (toggle); omitted from the Environment form to avoid duplication. */
+    hideFromEnvForm: true,
   },
 ];
 

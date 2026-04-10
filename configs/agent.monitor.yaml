@@ -1,20 +1,14 @@
-# Default local config (no secrets). Override filters and risk as needed.
-# Copy from agent.monitor.example.yaml for a fresh template.
-
 pollIntervalMs: 60000
-
 strategyFilters:
   profitable: true
   limit: 5
-
 risk:
   maxTotalNotionalUsd: 50000
   maxNotionalPerVenueUsd:
     twilight: 25000
     binance: 25000
     bybit: 25000
-  maxConcurrentLogicalTrades: 3
+  maxConcurrentLogicalTrades: 10
   maxDailyLossUsd: 5000
-
 execution:
   mode: simulation

@@ -1,5 +1,11 @@
 const WALLET_STORAGE_KEY = 'selectedTwilightWalletId';
 
+/** Set by /api/relayer/wallet/balance-sats for ZkOS fund slider. */
+let zkosSpendableSats = null;
+
+/** Last successful `/api/relayer/meta` payload (faucet / network hints). */
+let relayerMetaCache = null;
+
 const api = (path, opts = {}) => {
   const headers = { ...opts.headers };
   const token = localStorage.getItem('dashboardToken');
@@ -27,6 +33,101 @@ function shouldSurfaceFetchError(e, opts = {}) {
   return !isLikelyNetworkFailure(e);
 }
 
+/** Maps `context` passed to showDashboardError / showDashboardWarning to a section id for in-place alerts. */
+const SECTION_BY_CONTEXT = {
+  'Strategy run': 'sec-strategies',
+  'Strategy run skipped': 'sec-strategies',
+  'Real trade': 'sec-strategies',
+  'Real trading toggle': 'sec-wallet',
+  'Wallet list': 'sec-wallet',
+  'Wallet / manage': 'sec-manage',
+  'Manage wallet': 'sec-manage',
+  ZkOS: 'sec-zkos',
+  'ZkOS balance': 'sec-zkos',
+  'ZkOS allow': 'sec-zkos',
+  'Relayer': 'sec-advanced',
+  'Relayer meta': 'sec-advanced',
+  'Agent PnL': 'sec-agent-pnl',
+  'Transactions': 'sec-advanced',
+  'Logs': 'sec-advanced',
+  'Load config': 'sec-advanced',
+  'Trade desk': 'sec-trade-desk',
+  'Best trades': 'sec-strategies',
+  'Journal': 'sec-journal',
+  'Agent settings': 'sec-agent',
+  'Save agent settings': 'sec-agent',
+  'Close position': 'sec-agent-pnl',
+  'Save .env': 'sec-env',
+  'Reload .env': 'sec-env',
+  'View raw .env': 'sec-env',
+  'Testnet preset': 'sec-env',
+  'Mainnet preset': 'sec-env',
+  'Example Strategy API key': 'sec-env',
+  'CEX keys status': 'sec-keys',
+  'Faucet': 'sec-faucet',
+  'Create wallet': 'sec-wallet',
+  'Save CEX keys': 'sec-keys',
+  'Add journal entry': 'sec-journal',
+  'Remove journal entry': 'sec-journal',
+  'Start monitor': 'sec-agent',
+  'Stop monitor': 'sec-agent',
+  'Simulation run': 'sec-advanced',
+  'Save agent config YAML': 'sec-advanced',
+  'Reset portfolio': 'sec-advanced',
+};
+
+/**
+ * Show error / warning / success at the top of a section card when context maps to `SECTION_BY_CONTEXT`.
+ * @param {'error'|'warn'|'success'} variant
+ * @returns {boolean} true if rendered in-section (no top toast)
+ */
+function showSectionAlert(variant, message, context) {
+  const ctx = context || (variant === 'error' ? 'Error' : variant === 'success' ? 'Done' : 'Notice');
+  const sectionId = SECTION_BY_CONTEXT[ctx];
+  if (!sectionId) return false;
+  const sec = document.getElementById(sectionId);
+  if (!sec) return false;
+
+  let host = sec.querySelector(':scope > .dashboard-section-alert-host');
+  if (!host) {
+    host = document.createElement('div');
+    host.className = 'dashboard-section-alert-host';
+    sec.insertBefore(host, sec.firstChild);
+  }
+
+  const base =
+    variant === 'error'
+      ? 'dashboard-section-alert-error'
+      : variant === 'success'
+        ? 'dashboard-section-alert-success'
+        : 'dashboard-section-alert-warn';
+  const role = variant === 'success' ? 'status' : 'alert';
+  host.innerHTML = `
+    <div class="dashboard-section-alert ${base}" role="${role}">
+      <div class="dashboard-section-alert-head">
+        <span class="dashboard-section-alert-ctx">${escapeHtml(ctx)}</span>
+        <button type="button" class="btn ghost small dashboard-section-alert-dismiss" aria-label="Dismiss">×</button>
+      </div>
+      <pre class="dashboard-section-alert-body">${escapeHtml(String(message || '').trim() || 'Unknown error')}</pre>
+    </div>
+  `;
+  host.querySelector('.dashboard-section-alert-dismiss')?.addEventListener('click', () => {
+    host.innerHTML = '';
+  });
+
+  try {
+    sec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch {
+    /* ignore */
+  }
+
+  if (sectionId === 'sec-advanced' && typeof sec.open === 'boolean') {
+    sec.open = true;
+  }
+
+  return true;
+}
+
 function parseApiErrorBody(text, status) {
   const st = status ?? '?';
   if (!text || !String(text).trim()) return `[${st}] (empty response body)`;
@@ -41,6 +142,9 @@ function parseApiErrorBody(text, status) {
         '\n' +
         j.details.map((d) => (typeof d === 'string' ? d : JSON.stringify(d))).join('\n');
     }
+    if (msg && typeof j.hint === 'string' && j.hint.trim()) {
+      msg += '\n' + j.hint.trim();
+    }
     if (msg) return `[${st}] ${msg}`;
     return `[${st}] ${String(text).slice(0, 1500)}`;
   } catch {
@@ -49,10 +153,11 @@ function parseApiErrorBody(text, status) {
   }
 }
 
-/** Toast for explicit user actions only (not polling / page load). */
+/** Toast for explicit user actions only (not polling / page load). Prefer in-section alert when context maps to a section. */
 function showDashboardError(message, context = '') {
   const msg = String(message || 'Unknown error').trim() || 'Unknown error';
   const ctx = context || 'Error';
+  if (showSectionAlert('error', msg, ctx)) return;
   const wrap = document.getElementById('dashboard-toasts');
   if (!wrap) return;
   const el = document.createElement('div');
@@ -70,9 +175,33 @@ function showDashboardError(message, context = '') {
   while (wrap.children.length > 12) wrap.lastChild.remove();
 }
 
+function showDashboardSuccess(message, context = '') {
+  const msg = String(message || '').trim();
+  if (!msg) return;
+  const ctx = context || 'Done';
+  if (showSectionAlert('success', msg, ctx)) return;
+  const wrap = document.getElementById('dashboard-toasts');
+  if (!wrap) return;
+  const el = document.createElement('div');
+  el.className = 'dashboard-toast dashboard-toast-success';
+  el.setAttribute('role', 'status');
+  el.innerHTML = `
+    <div class="dashboard-toast-head">
+      <span class="dashboard-toast-ctx">${escapeHtml(ctx)}</span>
+      <button type="button" class="btn ghost small dashboard-toast-dismiss" aria-label="Dismiss">×</button>
+    </div>
+    <pre class="dashboard-toast-body">${escapeHtml(msg)}</pre>
+  `;
+  el.querySelector('.dashboard-toast-dismiss').addEventListener('click', () => el.remove());
+  wrap.prepend(el);
+  while (wrap.children.length > 12) wrap.lastChild.remove();
+}
+
 function showDashboardWarning(message, context = '') {
   const msg = String(message || '').trim();
   if (!msg) return;
+  const ctx = context || 'Notice';
+  if (showSectionAlert('warn', msg, ctx)) return;
   const wrap = document.getElementById('dashboard-toasts');
   if (!wrap) return;
   const el = document.createElement('div');
@@ -80,7 +209,7 @@ function showDashboardWarning(message, context = '') {
   el.setAttribute('role', 'status');
   el.innerHTML = `
     <div class="dashboard-toast-head">
-      <span class="dashboard-toast-ctx">${escapeHtml(context || 'Notice')}</span>
+      <span class="dashboard-toast-ctx">${escapeHtml(ctx)}</span>
       <button type="button" class="btn ghost small dashboard-toast-dismiss" aria-label="Dismiss">×</button>
     </div>
     <pre class="dashboard-toast-body">${escapeHtml(msg)}</pre>
@@ -149,16 +278,13 @@ function walletSession() {
   return o;
 }
 
-/** Panel-specific wallet + password; falls back to Session wallet (step 1). */
-function credsFromPanel(selectId, passId) {
+/** Panel-specific wallet id; password always from Twilight wallet (session) only. */
+function credsFromPanel(selectId) {
   const panelSel = document.getElementById(selectId);
-  const panelPass = document.getElementById(passId);
   const sessionSel = document.getElementById('wallet-select');
   const sessionPass = document.getElementById('wallet-pass');
   const walletId = (panelSel?.value ?? sessionSel?.value ?? '').trim() || '';
-  const pp = panelPass?.value?.trim() ?? '';
-  const sp = sessionPass?.value ?? '';
-  const password = pp || sp;
+  const password = sessionPass?.value ?? '';
   const o = {};
   if (walletId) o.walletId = walletId;
   if (password) o.password = password;
@@ -166,11 +292,11 @@ function credsFromPanel(selectId, passId) {
 }
 
 function faucetWalletCreds() {
-  return credsFromPanel('faucet-wallet-select', 'faucet-wallet-pass');
+  return credsFromPanel('faucet-wallet-select');
 }
 
 function manageWalletCreds() {
-  return credsFromPanel('manage-wallet-select', 'manage-wallet-pass');
+  return credsFromPanel('manage-wallet-select');
 }
 
 const PANEL_WALLET_SELECT_IDS = ['faucet-wallet-select', 'manage-wallet-select'];
@@ -183,6 +309,34 @@ function syncPanelWalletSelectsFromSession() {
     if (!el) continue;
     el.innerHTML = sel.innerHTML;
     el.value = sel.value;
+  }
+}
+
+function syncConfirmRealTradingToggle(entries) {
+  const chk = document.getElementById('chk-confirm-real-trading');
+  const hint = document.getElementById('confirm-real-trading-hint');
+  if (!chk) return;
+  const row = (entries || []).find((r) => r.key === 'CONFIRM_REAL_TRADING');
+  const on = row?.hasValue && String(row.value || '').trim().toUpperCase() === 'YES';
+  chk.checked = !!on;
+  if (hint) {
+    hint.textContent = on
+      ? 'Real trading is on — live orders are allowed when execution mode is real.'
+      : 'Real trading is off — live orders are blocked (simulation still works).';
+  }
+}
+
+function syncZkosAllowToggle(entries) {
+  const chk = document.getElementById('chk-allow-dashboard-zk');
+  const hint = document.getElementById('zkos-allow-hint');
+  if (!chk) return;
+  const row = (entries || []).find((r) => r.key === 'RELAYER_ALLOW_DASHBOARD_ZK');
+  const on = row?.hasValue && String(row.value || '').trim().toUpperCase() === 'YES';
+  chk.checked = !!on;
+  if (hint) {
+    hint.textContent = on
+      ? 'ZkOS fund and rotate are allowed for this server process.'
+      : 'Enable to write RELAYER_ALLOW_DASHBOARD_ZK=YES to .env (required for fund / rotate).';
   }
 }
 
@@ -230,6 +384,7 @@ async function refreshWalletList(selectId = null, opts = {}) {
     if (pick) localStorage.setItem(WALLET_STORAGE_KEY, pick);
     else localStorage.removeItem(WALLET_STORAGE_KEY);
     syncPanelWalletSelectsFromSession();
+    await refreshZkosBalance();
   } catch (e) {
     if (!shouldSurfaceFetchError(e, opts)) return;
     const m = formatRelayerMissingMessage(errMsg(e));
@@ -243,25 +398,296 @@ async function refreshWalletList(selectId = null, opts = {}) {
   }
 }
 
+/** Pull tx hash from faucet/mint JSON body string (nested `data.txHash`). */
+function parseFaucetStepTxHash(bodyStr) {
+  try {
+    const j = JSON.parse(String(bodyStr || '').trim());
+    const d = j && typeof j === 'object' ? j.data || j : j;
+    if (d && typeof d === 'object') {
+      const h = d.txHash || d.tx_hash;
+      if (typeof h === 'string' && h.trim()) return h.trim();
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function updateFaucetMintUiHints() {
+  const warn = document.getElementById('faucet-mint-warning');
+  const chk = document.getElementById('chk-faucet-sats');
+  const m = relayerMetaCache;
+  if (!warn) return;
+  if (!m || !chk?.checked) {
+    warn.hidden = true;
+    return;
+  }
+  warn.hidden = !!m.testSatsMintExpected;
+}
+
+function renderFaucetResponse(r) {
+  const pre = document.getElementById('faucet-out');
+  const summary = document.getElementById('faucet-result-summary');
+  const stepNyks = document.getElementById('faucet-step-nyks');
+  const stepMint = document.getElementById('faucet-step-mint');
+  const postMint = document.getElementById('faucet-post-mint-hint');
+  if (postMint) {
+    postMint.hidden = true;
+    postMint.textContent = '';
+  }
+  if (pre) pre.textContent = JSON.stringify(r, null, 2);
+  if (summary) summary.hidden = false;
+  if (stepNyks) {
+    const st = r.nyks?.status ?? '?';
+    stepNyks.textContent = `NYKS (POST /faucet): OK — HTTP ${st}`;
+    stepNyks.className = 'faucet-step faucet-step-ok';
+  }
+  if (stepMint) {
+    if (!r.mintTestSatsRequested) {
+      stepMint.textContent = 'Test sats (POST /mint): not requested (checkbox off).';
+      stepMint.className = 'faucet-step faucet-step-muted';
+      return;
+    }
+    if (r.mint?.skipped) {
+      const reason = String(r.mint.reason || 'skipped');
+      stepMint.textContent = `Test sats (POST /mint): skipped — ${reason}`;
+      stepMint.className = 'faucet-step faucet-step-warn';
+      showSectionAlert('warn', reason, 'Faucet');
+      return;
+    }
+    if (r.mint?.ok === false) {
+      const detail = `${r.mint.error || 'Unknown error'}\n\n${r.mint.hint || ''}`.trim();
+      stepMint.textContent = `Test sats (POST /mint): FAILED\n${detail}`;
+      stepMint.className = 'faucet-step faucet-step-err';
+      showDashboardError(detail, 'Faucet');
+      return;
+    }
+    stepMint.textContent = `Test sats (POST /mint): OK — HTTP ${r.mint?.status ?? '?'}`;
+    stepMint.className = 'faucet-step faucet-step-ok';
+    if (postMint && r.mintTestSatsRequested) {
+      const mintTx = parseFaucetStepTxHash(r.mint?.body);
+      const nyksTx = parseFaucetStepTxHash(r.nyks?.body);
+      const parts = [
+        'The faucet returned HTTP 200 before your local wallet view is guaranteed to show spendable SATS. Wait 1–5 minutes for testnet indexing / confirmations, then use Manage → Balance or ZkOS → Refresh balance.',
+        mintTx ? `BTC mint tx: ${mintTx}` : '',
+        nyksTx ? `NYKS tx: ${nyksTx}` : '',
+      ].filter(Boolean);
+      postMint.textContent = parts.join('\n');
+      postMint.hidden = false;
+    }
+    showSectionAlert(
+      'success',
+      'Mint succeeded over HTTP. If SATS still reads 0, wait a few minutes and refresh balance — see the note below the step lines.',
+      'Faucet'
+    );
+  }
+}
+
 async function loadRelayerMetaHints() {
   const hint = document.getElementById('relayer-binary-hint');
   const faucetHint = document.getElementById('faucet-hint');
+  const faucetEnv = document.getElementById('faucet-env-line');
+  const zkosGate = document.getElementById('zkos-gate-line');
   try {
     const m = await readJson('/api/relayer/meta');
+    relayerMetaCache = m;
     if (hint) {
-      hint.textContent = `Binary: ${m.binary} · Zk: ${m.zkAllowEnv ? 'on' : 'off'} · orders: ${m.ordersAllowEnv ? 'on' : 'off'}`;
+      const nt = m.networkType != null ? m.networkType : 'unset';
+      hint.textContent = `Binary: ${m.binary} · NETWORK_TYPE: ${nt} · Zk: ${m.zkAllowEnv ? 'on' : 'off'} · orders: ${m.ordersAllowEnv ? 'on' : 'off'}`;
       hint.classList.remove('hint-error');
+    }
+    if (zkosGate) {
+      zkosGate.textContent = m.zkAllowEnv
+        ? 'Relayer meta: ZkOS dashboard actions are on.'
+        : 'Relayer meta: ZkOS still off — use the “Allow ZkOS actions” checkbox above, or Reload env after editing .env.';
+      zkosGate.classList.toggle('hint-error', !m.zkAllowEnv);
     }
     if (faucetHint) {
       faucetHint.classList.toggle('warn', !m.faucetConfigured);
     }
+    if (faucetEnv) {
+      const nt = m.networkType != null ? m.networkType : '(unset)';
+      const fb = m.faucetBaseUrl || '(FAUCET_BASE_URL not set)';
+      const mintOk = m.testSatsMintExpected ? 'yes (testnet + faucet URL)' : 'no — set testnet + faucet';
+      faucetEnv.textContent = `Server env snapshot: NETWORK_TYPE=${nt} · FAUCET_BASE_URL=${fb} · test sats mint expected: ${mintOk}`;
+      faucetEnv.classList.toggle('warn', m.faucetConfigured === true && m.networkType === 'mainnet');
+    }
+    updateFaucetMintUiHints();
   } catch (e) {
+    relayerMetaCache = null;
     if (isLikelyNetworkFailure(e)) return;
     const m = errMsg(e);
     if (hint) {
       hint.textContent = m;
       hint.classList.add('hint-error');
     }
+    if (zkosGate) {
+      zkosGate.textContent = m;
+      zkosGate.classList.add('hint-error');
+    }
+    if (faucetEnv) faucetEnv.textContent = '';
+    updateFaucetMintUiHints();
+  }
+}
+
+function zkosAppendInsufficientHint(text, r) {
+  const errBlob = `${r?.stderr || ''}\n${r?.stdout || ''}`;
+  if (!/Insufficient balance/i.test(errBlob)) return text;
+  return (
+    text +
+    '\n\n---\nHint: if you are funding well below your full balance, fees are usually not the reason — the ' +
+    '“spendable” number here is best-effort from `wallet balance` JSON and can disagree with what `zkaccount fund` ' +
+    'can actually spend (UTXOs, confirmations, relayer rules). Compare Manage → Balance raw output, try a smaller ' +
+    'amount, or check nyks-wallet / relayer docs.'
+  );
+}
+
+async function zkosPost(path, body) {
+  const out = document.getElementById('zkos-out');
+  if (!out) return;
+  out.textContent = 'Running…';
+  try {
+    const r = await readJson(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    });
+    let text = JSON.stringify(r, null, 2);
+    if (r && r.ok === false) text = zkosAppendInsufficientHint(text, r);
+    out.textContent = text;
+  } catch (e) {
+    const m = errMsg(e);
+    out.textContent = m;
+    showDashboardError(m, 'ZkOS');
+  }
+}
+
+function zkosPostWithCreds(path, extra = {}) {
+  const creds = walletSession();
+  if (!creds.walletId) {
+    showDashboardWarning('Select a wallet and enter password in Twilight wallet (step 1).', 'ZkOS');
+    return;
+  }
+  zkosPost(path, { ...creds, ...extra });
+}
+
+/**
+ * When funding ~most of displayed spendable, leave a small buffer for fee/edge cases.
+ * For partial funds (e.g. 50%), fees come from the remainder — no buffer needed.
+ */
+function zkFundAmountAfterFeeHeadroom(rawSats, spendableSats) {
+  const raw = Math.floor(Number(rawSats) || 0);
+  if (raw <= 0) return 0;
+  const sp = spendableSats != null ? Number(spendableSats) : null;
+  if (sp != null && sp > 0 && raw <= sp * 0.85) {
+    return raw;
+  }
+  const desiredBuffer = Math.min(25_000, Math.max(546, Math.ceil(raw * 0.025)));
+  const buffer = Math.min(Math.max(0, raw - 1), desiredBuffer);
+  return Math.max(0, raw - buffer);
+}
+
+function setZkosFundFromPct(pctRaw) {
+  const pct = Math.min(100, Math.max(0, Number(pctRaw) || 0));
+  const input = document.getElementById('zkos-fund-sats');
+  const readout = document.getElementById('zkos-fund-pct-readout');
+  const slider = document.getElementById('zkos-fund-pct');
+  if (readout) readout.textContent = `${pct}%`;
+  if (slider && String(slider.value) !== String(pct)) slider.value = String(pct);
+  if (zkosSpendableSats == null || zkosSpendableSats <= 0) {
+    if (input && pct === 0) input.value = '';
+    return;
+  }
+  const raw = Math.floor((zkosSpendableSats * pct) / 100);
+  const amt = zkFundAmountAfterFeeHeadroom(raw, zkosSpendableSats);
+  if (input) input.value = amt > 0 ? String(amt) : '';
+}
+
+function syncZkosPctFromFundInput() {
+  const input = document.getElementById('zkos-fund-sats');
+  const slider = document.getElementById('zkos-fund-pct');
+  const readout = document.getElementById('zkos-fund-pct-readout');
+  if (!input || !slider || !readout) return;
+  if (zkosSpendableSats == null || zkosSpendableSats <= 0) return;
+  const n = Number(String(input.value).trim().replace(/,/g, ''));
+  if (!Number.isFinite(n) || n < 0) return;
+  const pct = Math.min(100, Math.max(0, Math.round((n / zkosSpendableSats) * 100)));
+  slider.value = String(pct);
+  readout.textContent = `${pct}%`;
+}
+
+async function refreshZkosBalance(opts = {}) {
+  const valEl = document.getElementById('zkos-balance-value');
+  const nyksEl = document.getElementById('zkos-balance-nyks');
+  const pendingEl = document.getElementById('zkos-balance-pending');
+  const hintEl = document.getElementById('zkos-balance-parse-hint');
+  const slider = document.getElementById('zkos-fund-pct');
+  const creds = walletSession();
+  if (!creds.walletId) {
+    zkosSpendableSats = null;
+    if (valEl) valEl.textContent = '—';
+    if (nyksEl) nyksEl.textContent = '';
+    if (pendingEl) pendingEl.textContent = '';
+    if (slider) {
+      slider.disabled = true;
+      slider.value = '0';
+    }
+    setZkosFundFromPct(0);
+    if (hintEl) hintEl.hidden = true;
+    return;
+  }
+  if (valEl) valEl.textContent = '…';
+  if (nyksEl) nyksEl.textContent = '';
+  if (pendingEl) pendingEl.textContent = '';
+  try {
+    const r = await readJson('/api/relayer/wallet/balance-sats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(creds),
+    });
+    zkosSpendableSats = r.spendableSats != null ? Number(r.spendableSats) : null;
+    if (valEl) {
+      valEl.textContent =
+        zkosSpendableSats != null ? `${Number(zkosSpendableSats).toLocaleString()} sats` : '—';
+    }
+    if (nyksEl) {
+      const ny = r.nyksBalance != null ? Number(r.nyksBalance) : null;
+      nyksEl.textContent =
+        ny != null && Number.isFinite(ny) ? ` · NYKS: ${ny.toLocaleString()}` : '';
+    }
+    if (pendingEl) {
+      const pen = r.pendingSats != null ? Number(r.pendingSats) : null;
+      pendingEl.textContent =
+        pen != null && Number.isFinite(pen) && pen > 0
+          ? ` · pending BTC (unconfirmed): ~${pen.toLocaleString()} sats`
+          : '';
+    }
+    if (slider) {
+      const ok = zkosSpendableSats != null && zkosSpendableSats > 0;
+      slider.disabled = !ok;
+      slider.value = '0';
+    }
+    setZkosFundFromPct(0);
+    if (hintEl) {
+      if (r.parseNote && r.ok) {
+        hintEl.textContent = r.parseNote;
+        hintEl.hidden = false;
+      } else {
+        hintEl.hidden = true;
+      }
+    }
+  } catch (e) {
+    zkosSpendableSats = null;
+    if (valEl) valEl.textContent = '—';
+    if (nyksEl) nyksEl.textContent = '';
+    if (pendingEl) pendingEl.textContent = '';
+    if (slider) {
+      slider.disabled = true;
+      slider.value = '0';
+    }
+    setZkosFundFromPct(0);
+    if (hintEl) hintEl.hidden = true;
+    if (opts.userAction) showDashboardError(errMsg(e), 'ZkOS balance');
   }
 }
 
@@ -286,11 +712,54 @@ async function managePost(path, body) {
 function managePostWithCreds(path, extra = {}) {
   const creds = manageWalletCreds();
   if (!creds.walletId) {
-    showDashboardWarning('Select a wallet (Manage section or Session wallet in step 1).', 'Manage wallet');
+    showDashboardWarning('Select a wallet in Twilight wallet (step 1).', 'Manage wallet');
     return;
   }
   managePost(path, { ...creds, ...extra });
 }
+
+document.getElementById('chk-confirm-real-trading')?.addEventListener('change', async (ev) => {
+  const on = ev.target.checked;
+  try {
+    await readJson('/api/env', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates: { CONFIRM_REAL_TRADING: on ? 'YES' : '' } }),
+    });
+    showDashboardSuccess(
+      on
+        ? 'Saved CONFIRM_REAL_TRADING=YES to .env — applied for this process.'
+        : 'Removed CONFIRM_REAL_TRADING from .env — live orders disabled.',
+      'Real trading'
+    );
+    await refreshEnv();
+  } catch (e) {
+    ev.target.checked = !on;
+    showDashboardError(errMsg(e), 'Real trading toggle');
+  }
+});
+
+document.getElementById('chk-allow-dashboard-zk')?.addEventListener('change', async (ev) => {
+  const on = ev.target.checked;
+  try {
+    await readJson('/api/env', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates: { RELAYER_ALLOW_DASHBOARD_ZK: on ? 'YES' : '' } }),
+    });
+    showDashboardSuccess(
+      on
+        ? 'Saved RELAYER_ALLOW_DASHBOARD_ZK=YES — ZkOS fund/transfer enabled for this process.'
+        : 'Removed RELAYER_ALLOW_DASHBOARD_ZK — ZkOS fund/transfer disabled.',
+      'ZkOS allow'
+    );
+    await refreshEnv();
+    await loadRelayerMetaHints();
+  } catch (e) {
+    ev.target.checked = !on;
+    showDashboardError(errMsg(e), 'ZkOS allow');
+  }
+});
 
 async function relayerPost(path, body) {
   const out = document.getElementById('relayer-out');
@@ -422,7 +891,7 @@ async function refreshTx(opts = {}) {
         <td>${t.apy != null ? Number(t.apy).toFixed(2) + '%' : '—'}</td>
         <td>${fmtUsd(t.totalNotionalUsd)}</td>
         <td>${fmtUsd(t.estimatedDailyUsd)}</td>
-        <td>${escapeHtml(t.mode || '')}</td>
+        <td>${escapeHtml(t.mode || '')}${t.execution?.cex?.orderId ? ` · CEX ${escapeHtml(String(t.execution.cex.orderId))}` : ''}</td>
       </tr>`
       )
       .join('');
@@ -558,7 +1027,7 @@ async function runStrategyExecute(strategyId, mode, options = {}) {
   if (mode === 'real' && !skipRealConfirm) {
     if (
       !confirm(
-        'Run REAL execution for this strategy? Requires API keys, relayer if Twilight leg is used, and CONFIRM_REAL_TRADING=YES for live orders.'
+        'Run REAL execution for this strategy? Requires API keys, relayer if the Twilight leg is used, and “Allow real trading” enabled in Twilight wallet (step 1).'
       )
     ) {
       return;
@@ -569,6 +1038,11 @@ async function runStrategyExecute(strategyId, mode, options = {}) {
     const t = targetTotalNotionalUsd != null ? Number(targetTotalNotionalUsd) : NaN;
     if (Number.isFinite(t) && t > 0) {
       body.targetTotalNotionalUsd = t;
+    }
+    if (mode === 'real') {
+      const w = walletSession();
+      if (w.walletId) body.walletId = w.walletId;
+      if (w.password) body.password = w.password;
     }
     const r = await readJson('/api/monitor/run-strategy', {
       method: 'POST',
@@ -581,13 +1055,178 @@ async function runStrategyExecute(strategyId, mode, options = {}) {
         'Strategy run skipped'
       );
     } else {
-      alert(r.transaction ? `Trade recorded: ${r.transaction.tradeId}` : 'Done.');
+      const t = r.transaction;
+      const ex = t?.execution;
+      if (t) {
+        let msg = `Logical trade ${t.tradeId}\nStrategy #${t.strategyId} ${t.strategyName || ''}\nMode: ${t.mode || '—'}\nNotional ${fmtUsd(t.totalNotionalUsd)}`;
+        if (ex?.kind === 'simulation' && ex.note) msg += `\n${ex.note}`;
+        if (ex?.twilight?.completed) msg += '\nTwilight: executed (see Trade desk for CLI output).';
+        if (ex?.twilight?.reason) {
+          msg += `\nTwilight: ${ex.twilight.reason}`;
+        }
+        if (ex?.cex?.completed && ex.cex.orderId) {
+          msg += `\nCEX (${ex.cex.venue}): order ${ex.cex.orderId} ${ex.cex.status ? `status ${ex.cex.status}` : ''}`;
+        }
+        if (ex?.cex?.reason) msg += `\nCEX: ${ex.cex.reason}`;
+        showDashboardSuccess(msg.trim(), 'Strategy run');
+      } else {
+        showDashboardSuccess('Completed with no transaction record.', 'Strategy run');
+      }
     }
     await refreshPnl({ userAction: true });
     await refreshTx({ userAction: true });
+    await refreshTradeDesk({ userAction: true });
     await refreshStatus({ userAction: true });
   } catch (e) {
     showDashboardError(errMsg(e), 'Strategy run');
+  }
+}
+
+function strategyRowAccentStyle(strategyId) {
+  const n = Number(strategyId) || 0;
+  const hue = (n * 47) % 360;
+  return `border-left: 4px solid hsl(${hue} 42% 46%);`;
+}
+
+function formatExecTwilightCell(execution) {
+  if (!execution || !execution.twilight) return '—';
+  const t = execution.twilight;
+  if (t.completed) {
+    const preview = (t.stdoutPreview || '').trim().slice(0, 220);
+    const full = (t.stdoutPreview || '') + (t.stderrPreview ? '\n' + t.stderrPreview : '');
+    const esc = escapeHtml(preview || 'OK');
+    return `<span class="trade-desk-clip" title="${escapeHtml(full.slice(0, 8000))}">${esc || 'OK'}</span>`;
+  }
+  return escapeHtml(t.reason || '—');
+}
+
+function formatExecCexCell(execution) {
+  if (!execution || !execution.cex) return '—';
+  const c = execution.cex;
+  if (c.completed) {
+    const parts = [
+      c.venue && `${c.venue}`,
+      c.orderId && `id ${c.orderId}`,
+      c.status,
+      c.side,
+      c.price != null && `px ${c.price}`,
+      c.filled != null && `filled ${c.filled}`,
+    ].filter(Boolean);
+    return escapeHtml(parts.join(' · '));
+  }
+  return escapeHtml(`${c.venue || 'cex'}: ${c.reason || '—'}`);
+}
+
+async function refreshTradeDesk(opts = {}) {
+  const tbody = document.getElementById('trade-desk-exec-body');
+  const meta = document.getElementById('trade-desk-meta');
+  const binBody = document.getElementById('trade-desk-binance-body');
+  const byBody = document.getElementById('trade-desk-bybit-body');
+  const twOut = document.getElementById('trade-desk-twilight-out');
+  if (!tbody) return;
+  try {
+    const sessionWid = document.getElementById('wallet-select')?.value?.trim() || '';
+    const tradeDeskPath =
+      '/api/trade-desk' + (sessionWid ? `?walletId=${encodeURIComponent(sessionWid)}` : '');
+    const d = await readJson(tradeDeskPath);
+    if (meta) {
+      meta.textContent = `BTC mark ~ $${d.currentBtcPrice ? Number(d.currentBtcPrice).toLocaleString() : '—'} · ledger realized ${fmtUsd(d.realizedPnlUsd)} · unreal ${fmtUsd(d.unrealizedPnlUsd)} · ${(d.agentTransactions || []).length} agent rows`;
+    }
+    const openByTid = new Map();
+    for (const o of d.openPositions || []) {
+      if (o.tradeId) openByTid.set(o.tradeId, o);
+    }
+    const rows = (d.agentTransactions || []).slice(0, 60);
+    tbody.innerHTML = rows
+      .map((t) => {
+        const tid = t.tradeId || '';
+        const sid = t.strategyId;
+        const open = openByTid.get(tid);
+        let ledger = '—';
+        if (open) {
+          ledger = `Open · unreal ${fmtUsd(open.unrealizedPnlUsd)}`;
+        } else if (t.mode === 'real') {
+          const closed = (d.closedPositions || []).find((c) => c.tradeId === tid);
+          ledger = closed ? `Closed · ${fmtUsd(closed.realizedPnlUsd)}` : 'Flat (no ledger row)';
+        } else {
+          ledger = 'Sim';
+        }
+        const ex = t.execution;
+        const accent = strategyRowAccentStyle(sid);
+        return `
+      <tr class="trade-desk-strat-row" style="${accent}">
+        <td>${fmtTime(t.at || t.savedAt)}</td>
+        <td><span class="trade-desk-strat-badge">#${sid}</span> ${escapeHtml(t.strategyName || '')}</td>
+        <td><code class="trade-desk-tid">${escapeHtml(String(tid).slice(0, 13))}</code></td>
+        <td>${escapeHtml(t.mode || '')}</td>
+        <td>${ledger}</td>
+        <td class="trade-desk-exec-cell">${formatExecTwilightCell(ex)}</td>
+        <td class="trade-desk-exec-cell">${formatExecCexCell(ex)}</td>
+      </tr>`;
+      })
+      .join('');
+    if (!rows.length) {
+      tbody.innerHTML = `<tr><td colspan="7">No agent trades yet. Run Sim or Real from strategies below.</td></tr>`;
+    }
+
+    if (binBody) {
+      const bl = d.binanceLive;
+      if (bl?.ok && (bl.positions || []).length) {
+        binBody.innerHTML = bl.positions
+          .map(
+            (p) => `
+        <tr>
+          <td>${escapeHtml(p.symbol || '')}</td>
+          <td>${escapeHtml(p.side || '')}</td>
+          <td>${p.notional != null ? fmtUsd(p.notional) : '—'}</td>
+          <td>${p.unrealizedPnl != null ? fmtUsd(p.unrealizedPnl) : '—'}</td>
+          <td>${p.entryPrice != null ? '$' + Number(p.entryPrice).toLocaleString() : '—'}</td>
+        </tr>`
+          )
+          .join('');
+      } else {
+        binBody.innerHTML = `<tr><td colspan="5">${escapeHtml(
+          [bl?.reason || bl?.error || 'No open positions or keys not set', bl?.hint].filter(Boolean).join(' — ')
+        )}</td></tr>`;
+      }
+    }
+    if (byBody) {
+      const bl = d.bybitLive;
+      if (bl?.ok && (bl.positions || []).length) {
+        byBody.innerHTML = bl.positions
+          .map(
+            (p) => `
+        <tr>
+          <td>${escapeHtml(p.symbol || '')}</td>
+          <td>${escapeHtml(p.side || '')}</td>
+          <td>${p.notional != null ? fmtUsd(p.notional) : '—'}</td>
+          <td>${p.unrealizedPnl != null ? fmtUsd(p.unrealizedPnl) : '—'}</td>
+          <td>${p.entryPrice != null ? '$' + Number(p.entryPrice).toLocaleString() : '—'}</td>
+        </tr>`
+          )
+          .join('');
+      } else {
+        byBody.innerHTML = `<tr><td colspan="5">${escapeHtml(bl?.reason || bl?.error || 'No open positions or keys not set')}</td></tr>`;
+      }
+    }
+    if (twOut) {
+      const tw = d.twilightLive;
+      if (tw?.ok) {
+        twOut.textContent = JSON.stringify(tw.summary ?? {}, null, 2);
+      } else {
+        twOut.textContent = JSON.stringify(
+          { error: tw?.error, stderr: tw?.stderr, stdoutPreview: tw?.stdoutPreview, reason: tw?.reason },
+          null,
+          2
+        );
+      }
+    }
+  } catch (e) {
+    if (!shouldSurfaceFetchError(e, opts)) return;
+    const m = errMsg(e);
+    tbody.innerHTML = `<tr><td colspan="7">${escapeHtml(m)}</td></tr>`;
+    if (meta) meta.textContent = '';
+    if (opts.userAction) showDashboardError(m, 'Trade desk');
   }
 }
 
@@ -782,7 +1421,7 @@ document.getElementById('modal-real-fetch-balance')?.addEventListener('click', a
   const pre = document.getElementById('modal-real-balance-out');
   const creds = manageWalletCreds();
   if (!creds.walletId) {
-    showDashboardWarning('Select a wallet (Manage wallet or Session) before loading balance.', 'Real trade');
+    showDashboardWarning('Select a wallet in Twilight wallet (step 1) before loading balance.', 'Real trade');
     return;
   }
   if (pre) {
@@ -859,6 +1498,12 @@ function renderPresetKvTable(obj) {
   return t;
 }
 
+function syncZkosTwilightIndexField() {
+  const z = document.getElementById('zkos-strategy-index');
+  const envEl = document.getElementById('env-TWILIGHT_ACCOUNT_INDEX');
+  if (z && envEl) z.value = envEl.value;
+}
+
 async function refreshEnv() {
   const root = document.getElementById('env-form-root');
   const pathHint = document.getElementById('env-path-hint');
@@ -920,6 +1565,7 @@ async function refreshEnv() {
           : `${rows.length} fields · all set`;
       html += `<details class="env-group-details"><summary class="env-group-summary"><span class="env-group-summary-title">${escapeHtml(g.title)}</span><span class="env-group-summary-meta muted small">${escapeHtml(meta)}</span></summary><p class="muted env-group-desc">${escapeHtml(g.help || '')}</p><div class="field-grid">`;
       for (const row of rows) {
+        if (row.hideFromEnvForm) continue;
         const id = `env-${row.key}`;
         const rowCls = row.hasValue ? 'env-field-row env-row-has-value' : 'env-field-row env-row-missing';
         const ph =
@@ -948,6 +1594,9 @@ async function refreshEnv() {
       html += `<p class="hint">Other keys in <code>.env</code> (not in the form above): <code>${data.unknownKeys.map(escapeHtml).join(', ')}</code></p>`;
     }
     root.innerHTML = html || '<p class="muted">No fields.</p>';
+    syncConfirmRealTradingToggle(data.entries || []);
+    syncZkosAllowToggle(data.entries || []);
+    syncZkosTwilightIndexField();
   } catch (e) {
     if (isLikelyNetworkFailure(e)) return;
     const m = errMsg(e);
@@ -1180,7 +1829,10 @@ document.getElementById('wallet-select')?.addEventListener('change', (ev) => {
       panelSel.value = v;
     }
   }
+  refreshZkosBalance();
 });
+
+document.getElementById('wallet-pass')?.addEventListener('change', () => refreshZkosBalance());
 
 document.getElementById('btn-wallet-refresh')?.addEventListener('click', () =>
   refreshWalletList(null, { userAction: true })
@@ -1188,13 +1840,15 @@ document.getElementById('btn-wallet-refresh')?.addEventListener('click', () =>
 
 document.getElementById('btn-faucet')?.addEventListener('click', async () => {
   const out = document.getElementById('faucet-out');
+  const summary = document.getElementById('faucet-result-summary');
   const creds = faucetWalletCreds();
   if (!creds.walletId) {
-    showDashboardWarning('Select a wallet for the faucet (dropdown in this section or Session wallet in step 1).', 'Faucet');
+    showDashboardWarning('Select a wallet for the faucet (dropdown or Twilight wallet step 1).', 'Faucet');
     return;
   }
   out.hidden = false;
-  out.textContent = 'Requesting…';
+  if (summary) summary.hidden = true;
+  out.textContent = 'Calling wallet balance, then POST /faucet (NYKS)…';
   try {
     const r = await readJson('/api/relayer/wallet/faucet', {
       method: 'POST',
@@ -1204,10 +1858,53 @@ document.getElementById('btn-faucet')?.addEventListener('click', async () => {
         mintTestSats: document.getElementById('chk-faucet-sats')?.checked === true,
       }),
     });
-    out.textContent = JSON.stringify(r, null, 2);
+    renderFaucetResponse(r);
   } catch (e) {
     const m = errMsg(e);
     out.textContent = m;
+    if (summary) summary.hidden = true;
+    showDashboardError(m, 'Faucet');
+  }
+});
+
+document.getElementById('chk-faucet-sats')?.addEventListener('change', () => updateFaucetMintUiHints());
+
+document.getElementById('btn-faucet-cli')?.addEventListener('click', async () => {
+  const out = document.getElementById('faucet-out');
+  const summary = document.getElementById('faucet-result-summary');
+  const postMint = document.getElementById('faucet-post-mint-hint');
+  const creds = faucetWalletCreds();
+  if (!creds.walletId) {
+    showDashboardWarning('Select a wallet for the faucet (dropdown or Twilight wallet step 1).', 'Faucet');
+    return;
+  }
+  if (out) {
+    out.hidden = false;
+    out.textContent = 'Running relayer-cli wallet faucet (testnet SDK get_test_tokens)…';
+  }
+  if (summary) summary.hidden = true;
+  if (postMint) {
+    postMint.hidden = true;
+    postMint.textContent = '';
+  }
+  try {
+    const r = await readJson('/api/relayer/wallet/faucet-cli', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(creds),
+    });
+    if (out) out.textContent = JSON.stringify(r, null, 2);
+    if (r.ok) {
+      showSectionAlert(
+        'success',
+        'CLI faucet finished. Refresh ZkOS / Manage balance — SATS should reflect update_balance() from the SDK.',
+        'Faucet'
+      );
+      await refreshZkosBalance();
+    }
+  } catch (e) {
+    const m = errMsg(e);
+    if (out) out.textContent = m;
     showDashboardError(m, 'Faucet');
   }
 });
@@ -1232,6 +1929,55 @@ document.getElementById('btn-manage-lock')?.addEventListener('click', () =>
 document.getElementById('btn-manage-sync-nonce')?.addEventListener('click', () =>
   managePostWithCreds('/api/relayer/wallet/sync-nonce')
 );
+
+document.getElementById('btn-zkos-accounts')?.addEventListener('click', () =>
+  zkosPostWithCreds('/api/relayer/wallet/accounts', {})
+);
+document.getElementById('btn-zkos-fund')?.addEventListener('click', () => {
+  const amount = document.getElementById('zkos-fund-sats')?.value?.trim();
+  if (!amount) {
+    showDashboardWarning('Enter an amount in sats to fund.', 'ZkOS');
+    return;
+  }
+  zkosPostWithCreds('/api/relayer/zkaccount/fund', { amount });
+});
+document.getElementById('btn-zkos-transfer')?.addEventListener('click', () => {
+  const from = document.getElementById('zkos-rotate-from')?.value?.trim();
+  if (from === '' || from == null) {
+    showDashboardWarning('Enter the account index to rotate from.', 'ZkOS');
+    return;
+  }
+  zkosPostWithCreds('/api/relayer/zkaccount/transfer', { from });
+});
+document.getElementById('btn-zkos-refresh-balance')?.addEventListener('click', () =>
+  refreshZkosBalance({ userAction: true })
+);
+document.getElementById('zkos-fund-pct')?.addEventListener('input', (ev) => {
+  setZkosFundFromPct(ev.target.value);
+});
+document.getElementById('zkos-fund-sats')?.addEventListener('input', () => syncZkosPctFromFundInput());
+
+document.getElementById('btn-zkos-save-index')?.addEventListener('click', async () => {
+  const v = document.getElementById('zkos-strategy-index')?.value?.trim() ?? '';
+  const out = document.getElementById('zkos-out');
+  try {
+    await readJson('/api/env', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates: { TWILIGHT_ACCOUNT_INDEX: v } }),
+    });
+    await readJson('/api/env/reload', { method: 'POST' });
+    await refreshEnv();
+    if (out) {
+      out.textContent = `Saved TWILIGHT_ACCOUNT_INDEX=${v || '(empty)'}. Reloaded env.`;
+    }
+    showDashboardSuccess(`TWILIGHT_ACCOUNT_INDEX saved as ${v || '(empty)'}.`, 'ZkOS');
+  } catch (e) {
+    const m = errMsg(e);
+    if (out) out.textContent = m;
+    showDashboardError(m, 'ZkOS');
+  }
+});
 
 document.getElementById('btn-relayer-create')?.addEventListener('click', async () => {
   const out = document.getElementById('wallet-create-out');
@@ -1296,6 +2042,10 @@ document.getElementById('btn-reload-exchange')?.addEventListener('click', () =>
 
 document.getElementById('btn-strategies-refresh')?.addEventListener('click', () =>
   refreshStrategies({ userAction: true })
+);
+
+document.getElementById('btn-trade-desk-refresh')?.addEventListener('click', () =>
+  refreshTradeDesk({ userAction: true })
 );
 
 document.getElementById('btn-journal-refresh')?.addEventListener('click', () =>
@@ -1368,6 +2118,7 @@ document.getElementById('btn-sim-once')?.addEventListener('click', async () => {
     out.textContent = JSON.stringify(r, null, 2);
     await refreshPnl({ userAction: true });
     await refreshTx({ userAction: true });
+    await refreshTradeDesk({ userAction: true });
     await refreshStatus({ userAction: true });
   } catch (e) {
     const m = errMsg(e);
@@ -1448,12 +2199,12 @@ document.getElementById('btn-relayer-mstats')?.addEventListener('click', () =>
 
 document.getElementById('btn-relayer-fund')?.addEventListener('click', () => {
   const amount = document.getElementById('relayer-fund-sats').value.trim();
-  relayerPost('/api/relayer/zkaccount/fund', { amount });
+  relayerPost('/api/relayer/zkaccount/fund', { amount, ...walletSession() });
 });
 
 document.getElementById('btn-relayer-transfer')?.addEventListener('click', () => {
   const from = document.getElementById('relayer-zk-from').value.trim();
-  relayerPost('/api/relayer/zkaccount/transfer', { from });
+  relayerPost('/api/relayer/zkaccount/transfer', { from, ...walletSession() });
 });
 
 document.getElementById('btn-relayer-open')?.addEventListener('click', () => {
@@ -1494,6 +2245,7 @@ loadRelayerMetaHints();
 loadExchangeStatus();
 refreshJournal();
 refreshStrategies();
+refreshTradeDesk();
 loadRelayerMeta();
 refreshEnv();
 loadAgentSettings();
@@ -1515,3 +2267,14 @@ function syncStrategiesTimer() {
 }
 document.getElementById('chk-strategies-auto')?.addEventListener('change', syncStrategiesTimer);
 syncStrategiesTimer();
+
+let tradeDeskTimer = null;
+function syncTradeDeskTimer() {
+  if (tradeDeskTimer) clearInterval(tradeDeskTimer);
+  tradeDeskTimer = null;
+  if (document.getElementById('chk-trade-desk-auto')?.checked) {
+    tradeDeskTimer = setInterval(refreshTradeDesk, 20000);
+  }
+}
+document.getElementById('chk-trade-desk-auto')?.addEventListener('change', syncTradeDeskTimer);
+syncTradeDeskTimer();

@@ -80,13 +80,53 @@ async function placeCexMarketOrder({ venue, positionSide, sizeUsd, market, logge
   return { order, symbol, price, amountBtc: Number(amount) };
 }
 
-function runRelayerCli(args, logger) {
+function mergedRelayerEnv(relayerEnv) {
+  return relayerEnv && typeof relayerEnv === 'object'
+    ? { ...process.env, ...relayerEnv }
+    : { ...process.env };
+}
+
+/** Argv for logging only (never log passphrase). */
+function argvForLog(argv) {
+  const out = [];
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--password' && i + 1 < argv.length) {
+      out.push('--password', '[redacted]');
+      i++;
+    } else {
+      out.push(argv[i]);
+    }
+  }
+  return out.join(' ');
+}
+
+function formatRelayerCliError(code, stderr, stdout) {
+  const errText = String(stderr || '').trim();
+  const outText = String(stdout || '').trim();
+  const combined = `${errText}\n${outText}`;
+  let msg = `relayer-cli exited ${code}: ${errText || outText || '(no output)'}`;
+  if (/No encrypted wallet|encrypted wallet\/password found/i.test(combined)) {
+    msg +=
+      '\n\nHint: if `wallet list` shows this id, the passphrase is usually wrong, or relayer was using a different working directory than the dashboard (fixed in recent server code: open-trade now uses repo root as cwd). Re-enter the password in Twilight wallet (step 1) and retry.';
+  }
+  if (/Account with index \d+ does not exist/i.test(combined)) {
+    msg +=
+      '\n\nHint: that ZkOS account index is not created yet. List indices (`relayer-cli wallet accounts --wallet-id … --password …` or the dashboard), fund the account if needed (`zkaccount fund`), then set TWILIGHT_ACCOUNT_INDEX to an existing index (default is 0).';
+  }
+  return msg;
+}
+
+/** Merge request/session wallet into env for relayer (no .env required). */
+function runRelayerCli(args, logger, relayerEnv = {}, spawnOpts = {}) {
   const bin = process.env.TWILIGHT_RELAYER_CLI || 'relayer-cli';
+  const env = mergedRelayerEnv(relayerEnv);
+  const cwd = spawnOpts.cwd;
   return new Promise((resolve, reject) => {
-    logger.info(`[REAL] spawning: ${bin} ${args.join(' ')}`);
+    logger.info(`[REAL] spawning: ${bin} ${argvForLog(args)}${cwd ? ` (cwd=${cwd})` : ''}`);
     const child = spawn(bin, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env },
+      env,
+      ...(cwd ? { cwd } : {}),
     });
     let out = '';
     let err = '';
@@ -98,7 +138,7 @@ function runRelayerCli(args, logger) {
     });
     child.on('close', (code) => {
       if (code !== 0) {
-        reject(new Error(`relayer-cli exited ${code}: ${err || out}`));
+        reject(new Error(formatRelayerCliError(code, err, out)));
       } else {
         resolve({ stdout: out, stderr: err });
       }
@@ -107,11 +147,25 @@ function runRelayerCli(args, logger) {
   });
 }
 
+function twilightCliExplicitlyDisabled() {
+  return process.env.ALLOW_TWILIGHT_CLI_EXECUTION === '0';
+}
+
+/**
+ * Run Twilight relayer when explicitly allowed, or when real trading is already confirmed
+ * (CONFIRM_REAL_TRADING=YES). Opt out with ALLOW_TWILIGHT_CLI_EXECUTION=0.
+ */
+function shouldRunTwilightCli() {
+  if (twilightCliExplicitlyDisabled()) return false;
+  if (process.env.ALLOW_TWILIGHT_CLI_EXECUTION === '1') return true;
+  return process.env.CONFIRM_REAL_TRADING === 'YES';
+}
+
 /**
  * Real execution: optional Twilight via relayer-cli; CEX via ccxt when configured.
- * Twilight CLI is off unless ALLOW_TWILIGHT_CLI_EXECUTION=1.
+ * @param {{ strategy: object, notionals: object, market: object, logger: object, relayerEnv?: Record<string,string>, relayerCwd?: string }} opts
  */
-export async function executeReal({ strategy, notionals, market, logger }) {
+export async function executeReal({ strategy, notionals, market, logger, relayerEnv, relayerCwd }) {
   const id = randomUUID();
   const venue = cexVenue(strategy);
   const price = Math.round(btcPriceFromMarket(market, venue || 'binance'));
@@ -121,17 +175,31 @@ export async function executeReal({ strategy, notionals, market, logger }) {
     String(strategy.twilightPosition).toLowerCase() !== 'null' &&
     Number(strategy.twilightSize) > 0;
 
-  const results = { tradeId: id, mode: 'real', twilight: null, cex: null };
+  const results = { tradeId: id, mode: 'real', twilight: null, cex: null, twilightSkippedReason: null };
 
-  if (twilightLeg && process.env.ALLOW_TWILIGHT_CLI_EXECUTION === '1') {
+  if (twilightLeg && shouldRunTwilightCli()) {
     const accountIndex = process.env.TWILIGHT_ACCOUNT_INDEX || '0';
     const side = String(strategy.twilightPosition).toLowerCase();
     const lev = String(strategy.twilightLeverage);
+    const env = mergedRelayerEnv(relayerEnv);
+    const walletId = String(env.NYKS_WALLET_ID || '').trim();
+    const password = String(env.NYKS_WALLET_PASSPHRASE || '');
+    if (!walletId || !password) {
+      throw new Error(
+        'Twilight order needs wallet id and passphrase in a non-interactive run. Fill wallet + password in Twilight wallet (step 1) when you click Real, or set NYKS_WALLET_ID and NYKS_WALLET_PASSPHRASE in the environment.'
+      );
+    }
+    // Pass credentials on argv so relayer does not try to read a TTY (headless spawn has no /dev/tty → errno 6 on macOS).
+    // Omit --no-wait: some relayer-cli builds do not support it.
     const args = [
       'order',
       'open-trade',
+      '--wallet-id',
+      walletId,
+      '--password',
+      password,
       '--account-index',
-      accountIndex,
+      String(accountIndex),
       '--side',
       side,
       '--entry-price',
@@ -140,13 +208,16 @@ export async function executeReal({ strategy, notionals, market, logger }) {
       lev,
       '--order-type',
       'MARKET',
-      '--no-wait',
     ];
-    results.twilight = await runRelayerCli(args, logger);
+    results.twilight = await runRelayerCli(args, logger, relayerEnv, {
+      cwd: relayerCwd,
+    });
   } else if (twilightLeg) {
-    logger.warn(
-      '[REAL] Twilight leg skipped (set ALLOW_TWILIGHT_CLI_EXECUTION=1 and configure TWILIGHT_RELAYER_CLI / wallet env).'
-    );
+    const reason = twilightCliExplicitlyDisabled()
+      ? 'Twilight leg skipped (ALLOW_TWILIGHT_CLI_EXECUTION=0).'
+      : 'Twilight leg skipped: enable “Allow real trading” (CONFIRM_REAL_TRADING=YES), or set ALLOW_TWILIGHT_CLI_EXECUTION=1, and configure relayer + wallet.';
+    results.twilightSkippedReason = reason;
+    logger.warn(`[REAL] ${reason}`);
   }
 
   if (venue) {

@@ -64,13 +64,7 @@ npm run start:real -- --once
 
 ### Twilight (`relayer-cli`)
 
-By default the **Twilight leg is skipped** in real mode. To attempt `relayer-cli order open-trade`:
-
-```bash
-export ALLOW_TWILIGHT_CLI_EXECUTION=1
-# Ensure relayer-cli is on PATH or set TWILIGHT_RELAYER_CLI=/path/to/relayer-cli
-# Wallet env vars must be available to the CLI (see nyks-wallet docs)
-```
+In real mode the Twilight leg runs when **real trading is confirmed** (`CONFIRM_REAL_TRADING=YES`) or `ALLOW_TWILIGHT_CLI_EXECUTION=1`; use `ALLOW_TWILIGHT_CLI_EXECUTION=0` to disable. Point `TWILIGHT_RELAYER_CLI` at the binary and supply wallet to the relayer (env or dashboard session on manual runs).
 
 ### Testnet
 

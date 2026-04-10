@@ -245,6 +245,16 @@ h1 {
   background: rgba(28, 22, 8, 0.97);
 }
 
+.dashboard-toast-success {
+  border-color: rgba(107, 191, 138, 0.4);
+  border-left: 4px solid var(--ok);
+  background: rgba(12, 22, 16, 0.96);
+}
+
+.dashboard-toast-success .dashboard-toast-ctx {
+  color: #86d4a8;
+}
+
 .dashboard-toast-head {
   display: flex;
   align-items: flex-start;
@@ -284,6 +294,73 @@ h1 {
   padding: 0.15rem 0.45rem !important;
   line-height: 1;
   min-height: auto;
+}
+
+/* In-section alerts (errors / warnings / success for mapped actions) — top of the relevant card */
+.dashboard-section-alert-host {
+  margin: 0 0 0.85rem;
+}
+
+.dashboard-section-alert {
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  padding: 0.65rem 0.85rem;
+  background: rgba(14, 16, 20, 0.96);
+}
+
+.dashboard-section-alert-error {
+  border-color: rgba(232, 96, 96, 0.45);
+  border-left: 4px solid var(--danger);
+}
+
+.dashboard-section-alert-warn {
+  border-color: rgba(234, 179, 8, 0.35);
+  border-left: 4px solid #ca8a04;
+  background: rgba(28, 22, 8, 0.85);
+}
+
+.dashboard-section-alert-success {
+  border-color: rgba(107, 191, 138, 0.4);
+  border-left: 4px solid var(--ok);
+  background: rgba(12, 22, 16, 0.96);
+}
+
+.dashboard-section-alert-success .dashboard-section-alert-ctx {
+  color: #86d4a8;
+}
+
+.dashboard-section-alert-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.dashboard-section-alert-ctx {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.dashboard-section-alert-error .dashboard-section-alert-ctx {
+  color: #f0a8a8;
+}
+
+.dashboard-section-alert-warn .dashboard-section-alert-ctx {
+  color: #fcd34d;
+}
+
+.dashboard-section-alert-body {
+  margin: 0;
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #e8ecf4;
 }
 
 .status-line.status-error {
@@ -345,6 +422,34 @@ pre.log {
   border-radius: 8px;
 }
 
+.table-wrap-scroll {
+  max-height: 28rem;
+}
+
+.trade-desk-table .trade-desk-exec-cell {
+  max-width: 14rem;
+  font-size: 0.78rem;
+  vertical-align: top;
+}
+
+.trade-desk-clip {
+  display: block;
+  max-height: 4.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trade-desk-strat-badge {
+  display: inline-block;
+  font-weight: 600;
+  color: var(--accent);
+  margin-right: 0.25rem;
+}
+
+.trade-desk-tid {
+  font-size: 0.72rem;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -370,6 +475,23 @@ tbody tr:hover {
   background: rgba(255, 255, 255, 0.03);
 }
 
+.card-inset {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.wallet-real-trading .inline-check {
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+
+.wallet-real-trading .inline-check input {
+  margin-top: 0.2rem;
+}
+
 .subhead {
   font-family: var(--display);
   font-size: 0.95rem;
@@ -380,6 +502,29 @@ tbody tr:hover {
 
 .subhead:first-of-type {
   margin-top: 0.5rem;
+}
+
+.zkos-balance-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1rem;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.zkos-balance-line {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.zkos-pct-field input[type='range'] {
+  width: 100%;
+  max-width: 22rem;
+  margin-top: 0.35rem;
+}
+
+.zkos-pct-field input[type='range']:disabled {
+  opacity: 0.45;
 }
 
 .field-grid {
@@ -477,6 +622,42 @@ pre.relayer-out {
   font-weight: 700;
   font-family: var(--font);
   vertical-align: middle;
+}
+
+.faucet-result-summary {
+  margin-top: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.faucet-step {
+  margin: 0.4rem 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.faucet-step-ok {
+  color: var(--ok);
+}
+
+.faucet-step-err {
+  color: var(--danger);
+}
+
+.faucet-step-warn {
+  color: var(--accent);
+}
+
+.faucet-step-muted {
+  color: var(--muted);
+}
+
+.faucet-post-mint-hint {
+  margin-top: 0.5rem;
+  white-space: pre-wrap;
 }
 
 .muted.warn {

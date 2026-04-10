@@ -28,7 +28,7 @@ Open **http://127.0.0.1:3847** (default). The API binds to **localhost only** fo
 | `DASHBOARD_HOST` | _(unset)_ | Omit to bind all interfaces (avoids some `localhost` vs `127.0.0.1` / IPv6 issues). Set `127.0.0.1` to restrict to loopback. |
 | `DASHBOARD_TOKEN` | _(empty)_ | If set, all `/api/*` routes except `/api/health` require header `x-dashboard-token` |
 | `STRATEGY_API_KEY` | — | From repo `.env` (loaded by the monitor service) |
-| `CONFIRM_REAL_TRADING` | — | Required `YES` in `.env` if yaml `execution.mode` is `real` |
+| `CONFIRM_REAL_TRADING` | — | Set via **Twilight wallet → Allow real trading** (writes `.env`) or `YES` manually if yaml `execution.mode` is `real` |
 
 If you set `DASHBOARD_TOKEN`, paste the same value into the **Dashboard token** field in the UI and click **Store** (saved in `localStorage`).
 
@@ -50,7 +50,7 @@ Both are **gitignored**; only `data/.gitkeep` is tracked.
 
 ## Twilight `relayer-cli` (dashboard UI + API)
 
-The **Twilight relayer** card runs [nyks-wallet](https://github.com/twilight-project/nyks-wallet) `relayer-cli` **on the server** (same process as the dashboard), with `cwd` = repo root so `.env` / `RELAYER_PROGRAM_JSON_PATH` resolve like your terminal.
+The **Twilight relayer** card runs [nyks-wallet](https://github.com/twilight-project/nyks-wallet) `relayer-cli` **on the server** (same process as the dashboard), with `cwd` = repo root so `.env` / `RELAYER_PROGRAM_JSON_PATH` resolve like your terminal. **Wallet encryption password** is entered only in **Twilight wallet** (step 1); faucet and manage sections reuse it.
 
 | Env | Purpose |
 |-----|---------|

@@ -1,5 +1,5 @@
 import { fetchStrategies, fetchMarket, fetchStrategyById } from './strategyClient.js';
-import { pickTopStrategy, scaleStrategyToTargetTotalNotional } from './normalize.js';
+import { cexVenue, pickTopStrategy, scaleStrategyToTargetTotalNotional } from './normalize.js';
 import { evaluateRisk } from './riskEngine.js';
 import { addLogicalTrade } from './portfolio.js';
 import { executeSimulation } from './executor/simulation.js';
@@ -11,7 +11,67 @@ function entryBtcPrice(market) {
   );
 }
 
-async function executeChosenStrategy({ strategy, config, portfolio, market, logger }) {
+/** JSON-safe summary for dashboard persistence (venue ids, previews — not full ccxt objects). */
+function buildExecutionSummary(trade) {
+  if (!trade) return null;
+  if (trade.mode === 'simulation') {
+    return {
+      kind: 'simulation',
+      note: 'Simulated — no live venue orders',
+    };
+  }
+  const strategy = trade.raw?.strategy;
+  const raw = trade.raw?.results;
+  const summary = {
+    kind: 'real',
+    tradeId: trade.tradeId,
+    twilight: null,
+    cex: null,
+  };
+  if (raw?.twilight) {
+    summary.twilight = {
+      completed: true,
+      stdoutPreview: String(raw.twilight.stdout || '').slice(0, 2500),
+      stderrPreview: String(raw.twilight.stderr || '').slice(0, 1000),
+    };
+  } else if (
+    strategy &&
+    strategy.twilightPosition &&
+    String(strategy.twilightPosition).toLowerCase() !== 'null' &&
+    Number(strategy.twilightSize) > 0
+  ) {
+    summary.twilight = {
+      completed: false,
+      reason:
+        raw?.results?.twilightSkippedReason ||
+        'Twilight leg not executed (allow real trading or ALLOW_TWILIGHT_CLI_EXECUTION, relayer + wallet)',
+    };
+  }
+  if (raw?.cex?.order) {
+    const venue = cexVenue(strategy) || 'cex';
+    const o = raw.cex.order;
+    summary.cex = {
+      completed: true,
+      venue,
+      orderId: o.id != null ? String(o.id) : '',
+      symbol: raw.cex.symbol || o.symbol,
+      side: o.side,
+      status: o.status,
+      price: o.average ?? o.price,
+      amount: o.amount,
+      filled: o.filled,
+    };
+  } else if (strategy && cexVenue(strategy)) {
+    summary.cex = {
+      completed: false,
+      venue: cexVenue(strategy),
+      reason: 'CEX leg missing or failed before order',
+    };
+  }
+  return summary;
+}
+
+async function executeChosenStrategy({ strategy, config, portfolio, market, logger, relayerEnv }) {
   const risk = evaluateRisk({
     strategy,
     risk: config.risk,
@@ -27,7 +87,14 @@ async function executeChosenStrategy({ strategy, config, portfolio, market, logg
   const notionals = risk.notionals;
   const exec = config.executionMode === 'real' ? executeReal : executeSimulation;
 
-  const trade = await exec({ strategy, notionals, market, logger });
+  const trade = await exec({
+    strategy,
+    notionals,
+    market,
+    logger,
+    relayerEnv,
+    relayerCwd: config.repoRoot,
+  });
 
   const apyNum = Number(strategy.apy) || 0;
   const notional = Number(trade.totalNotionalUsd) || 0;
@@ -67,6 +134,7 @@ async function executeChosenStrategy({ strategy, config, portfolio, market, logg
       venues: trade.venues,
       mode: trade.mode,
       estimatedDailyUsd,
+      execution: buildExecutionSummary(trade),
     },
   };
 }
@@ -108,6 +176,7 @@ export async function runOneCycleForStrategy({
   portfolio,
   logger,
   targetTotalNotionalUsd,
+  relayerEnv,
 }) {
   const key = config.strategyApiKey;
   if (!key) {
@@ -139,5 +208,5 @@ export async function runOneCycleForStrategy({
   }
 
   logger.info(`Manual run: #${strategy.id} ${strategy.name} APY=${strategy.apy}`);
-  return executeChosenStrategy({ strategy, config, portfolio, market, logger });
+  return executeChosenStrategy({ strategy, config, portfolio, market, logger, relayerEnv });
 }

@@ -1,7 +1,20 @@
 import { getRelayerBinary, runRelayerCli, sanitizeString } from './relayer-cli.mjs';
 import { getRepoRoot } from './persistence.mjs';
-import { parseTwilightAddressFromBalanceStdout, parseWalletListStdout } from './relayer-parse.mjs';
+import {
+  parseNyksBalanceFromWalletBalanceText,
+  parsePendingSatsFromWalletBalance,
+  parseSpendableSatsFromWalletBalance,
+  parseTwilightAddressFromBalanceStdout,
+  parseWalletListStdout,
+} from './relayer-parse.mjs';
 import { requestNyksTokens, requestTestSats } from './twilight-faucet.mjs';
+
+/** @returns {'testnet'|'mainnet'|null} */
+function normalizedNetworkType() {
+  const n = sanitizeString(process.env.NETWORK_TYPE || '').toLowerCase();
+  if (n === 'testnet' || n === 'mainnet') return n;
+  return null;
+}
 
 function creds(body) {
   const walletId = sanitizeString(body?.walletId ?? body?.wallet_id ?? '') || process.env.NYKS_WALLET_ID;
@@ -53,12 +66,17 @@ export function registerRelayerRoutes(app, { requireToken }) {
   app.get('/api/relayer/meta', requireToken, (_req, res) => {
     const faucet =
       sanitizeString(process.env.FAUCET_BASE_URL || process.env.NYKS_FAUCET_URL || '') || '';
+    const networkType = normalizedNetworkType();
     res.json({
       binary: getRelayerBinary(),
       repoRoot,
       ordersAllowEnv: process.env.RELAYER_ALLOW_DASHBOARD_ORDERS === 'YES',
       zkAllowEnv: process.env.RELAYER_ALLOW_DASHBOARD_ZK === 'YES',
       faucetConfigured: !!faucet,
+      faucetBaseUrl: faucet || null,
+      networkType,
+      /** True when test sats mint (POST /mint) is expected to work — same chain as faucet. */
+      testSatsMintExpected: networkType === 'testnet' && !!faucet,
     });
   });
 
@@ -96,6 +114,7 @@ export function registerRelayerRoutes(app, { requireToken }) {
       });
     }
     const mintSats = req.body?.mintTestSats === true;
+    const networkType = normalizedNetworkType();
     try {
       const bal = await runRelayerCli(
         ['wallet', 'balance', '--wallet-id', walletId, '--password', password],
@@ -115,18 +134,78 @@ export function registerRelayerRoutes(app, { requireToken }) {
         });
       }
       const nyks = await requestNyksTokens(base, recipientAddress);
-      let testSats = null;
-      if (mintSats) testSats = await requestTestSats(base, recipientAddress);
+
+      /** @type {Record<string, unknown> | null} */
+      let mint = null;
+      if (mintSats) {
+        if (networkType !== 'testnet') {
+          mint = {
+            skipped: true,
+            networkType: networkType ?? '(unset or unknown)',
+            reason:
+              'Test sats (POST /mint) are for Twilight testnet only. Set NETWORK_TYPE=testnet in the server `.env`, apply the testnet preset (LCD, RPC, relayer, faucet URLs), restart the dashboard, then try again.',
+          };
+        } else {
+          try {
+            const testSats = await requestTestSats(base, recipientAddress);
+            mint = { ok: true, ...testSats };
+          } catch (e) {
+            const msg = e.message || String(e);
+            mint = {
+              ok: false,
+              error: msg,
+              hint:
+                'NYKS may have succeeded above. Mint can fail if the faucet rate-limits, your address is ineligible, or LCD/RPC/NETWORK_TYPE do not match the faucet chain. Wait and retry, confirm `FAUCET_BASE_URL` is the testnet faucet, and check relayer logs.',
+            };
+          }
+        }
+      }
+
       res.json({
         ok: true,
+        networkType,
+        faucetBaseUrl: base,
         recipientAddress,
         nyks,
-        testSats,
-        note: 'NYKS via POST /faucet; test sats via POST /mint (testnet only).',
+        mintTestSatsRequested: mintSats,
+        mint,
+        note:
+          'NYKS via POST /faucet; test sats via POST /mint. If SATS stay 0 in `wallet balance`, use POST /api/relayer/wallet/faucet-cli (runs `relayer-cli wallet faucet` / SDK get_test_tokens) instead.',
       });
     } catch (e) {
-      res.status(502).json({ error: e.message || String(e) });
+      res.status(502).json({
+        error: e.message || String(e),
+        step: 'nyks_faucet',
+        hint:
+          'If NYKS failed, nothing was minted. Fix wallet balance / relayer / FAUCET_BASE_URL and retry.',
+      });
     }
+  });
+
+  /**
+   * Testnet only: runs `relayer-cli wallet faucet` → SDK `get_test_tokens` + `update_balance`.
+   * Prefer this when HTTP POST /faucet + /mint succeed but `wallet balance` still shows SATS: 0.
+   */
+  app.post('/api/relayer/wallet/faucet-cli', requireToken, (req, res) => {
+    const { walletId, password } = creds(req.body || {});
+    const err = requireWalletCreds(walletId, password);
+    if (err) return res.status(400).json({ error: err });
+    if (normalizedNetworkType() !== 'testnet') {
+      return res.status(400).json({
+        error:
+          'CLI `wallet faucet` is testnet-only. Set NETWORK_TYPE=testnet in .env (mainnet uses register-btc / deposits, not the test faucet).',
+      });
+    }
+    jsonHandler(
+      res,
+      runRelayerCli(['wallet', 'faucet', '--wallet-id', walletId, '--password', password], {
+        cwd: repoRoot,
+      }).then((r) => ({
+        ok: r.ok,
+        ...r,
+        note: 'nyks-wallet: get_test_tokens(&mut wallet) then update_balance() — official QuickStart path; differs from raw HTTP /faucet + /mint.',
+      }))
+    );
   });
 
   app.post('/api/relayer/wallet/balance', requireToken, (req, res) => {
@@ -140,6 +219,56 @@ export function registerRelayerRoutes(app, { requireToken }) {
         { cwd: repoRoot }
       ).then((r) => ({ ok: r.ok, ...r }))
     );
+  });
+
+  /** Parsed spendable on-chain sats for ZkOS fund UI (best-effort). */
+  app.post('/api/relayer/wallet/balance-sats', requireToken, async (req, res) => {
+    const { walletId, password } = creds(req.body || {});
+    const err = requireWalletCreds(walletId, password);
+    if (err) return res.status(400).json({ error: err });
+    try {
+      const r = await runRelayerCli(
+        ['wallet', 'balance', '--wallet-id', walletId, '--password', password, '--json'],
+        { cwd: repoRoot }
+      );
+      const spendableSats = r.ok ? parseSpendableSatsFromWalletBalance(r.stdout) : null;
+      const nyksBalance = r.ok ? parseNyksBalanceFromWalletBalanceText(r.stdout) : null;
+      const pendingSats = r.ok ? parsePendingSatsFromWalletBalance(r.stdout) : null;
+      let parseNote = null;
+      if (r.ok) {
+        if (spendableSats == null) {
+          parseNote = 'Could not parse SATS from balance output; enter fund amount manually.';
+        } else if (pendingSats != null && pendingSats > 0 && spendableSats === 0) {
+          parseNote = `Pending / unconfirmed BTC (~${pendingSats} sats) — spendable SATS may stay 0 until the next block is indexed. Wait 1–5 minutes and refresh Manage → Balance.`;
+        } else if (spendableSats === 0) {
+          const lag =
+            'If the faucet mint (POST /mint) just succeeded, spendable SATS can lag 1–5 minutes behind the HTTP response while the block is indexed and UTXOs sync — refresh Manage → Balance again.';
+          if (nyksBalance != null && nyksBalance > 0) {
+            parseNote =
+              'ZkOS fund spends on-chain BTC (SATS), not NYKS. You have NYKS on Twilight but SATS is 0 — deposit BTC to this wallet or use testnet faucet + mint so SATS > 0, then fund ZkOS. ' +
+              lag;
+          } else {
+            parseNote =
+              'SATS is 0 — use the testnet faucet (+ mint) or deposit BTC. ' + lag;
+          }
+        }
+        if (r.ok && spendableSats === 0 && parseNote) {
+          parseNote +=
+            ' If SATS stay 0 after a long wait, the HTTP faucet is not the same as the SDK path — use Faucet “CLI: wallet faucet (SDK)” or run `relayer-cli wallet faucet` (testnet).';
+        }
+      }
+      res.json({
+        ok: r.ok,
+        spendableSats,
+        pendingSats,
+        nyksBalance,
+        parseNote,
+        stderr: r.stderr,
+        stdoutPreview: String(r.stdout || '').slice(0, 4000),
+      });
+    } catch (e) {
+      res.status(500).json({ error: e.message || String(e) });
+    }
   });
 
   app.post('/api/relayer/wallet/accounts', requireToken, (req, res) => {
@@ -265,8 +394,11 @@ export function registerRelayerRoutes(app, { requireToken }) {
   app.post('/api/relayer/zkaccount/fund', requireToken, (req, res) => {
     const gate = requireZkAllowed();
     if (gate) return res.status(403).json({ error: gate });
+    const { walletId, password } = creds(req.body || {});
+    const err = requireWalletCreds(walletId, password);
+    if (err) return res.status(400).json({ error: err });
     const { amount, amountMbtc, amountBtc } = req.body || {};
-    const argv = ['zkaccount', 'fund', '--json'];
+    const argv = ['zkaccount', 'fund', '--wallet-id', walletId, '--password', password];
     if (amount != null && amount !== '') {
       argv.push('--amount', String(amount));
     } else if (amountMbtc != null && amountMbtc !== '') {
@@ -276,22 +408,32 @@ export function registerRelayerRoutes(app, { requireToken }) {
     } else {
       return res.status(400).json({ error: 'Provide amount (sats), amountMbtc, or amountBtc' });
     }
+    argv.push('--json');
     jsonHandler(res, runRelayerCli(argv, { cwd: repoRoot }).then((r) => ({ ok: r.ok, ...r })));
   });
 
   app.post('/api/relayer/zkaccount/transfer', requireToken, (req, res) => {
     const gate = requireZkAllowed();
     if (gate) return res.status(403).json({ error: gate });
+    const { walletId, password } = creds(req.body || {});
+    const err = requireWalletCreds(walletId, password);
+    if (err) return res.status(400).json({ error: err });
     const from = req.body?.from ?? req.body?.accountIndex;
     if (from == null || from === '') {
       return res.status(400).json({ error: 'from (account index) is required' });
     }
-    jsonHandler(
-      res,
-      runRelayerCli(['zkaccount', 'transfer', '--from', String(from), '--json'], {
-        cwd: repoRoot,
-      }).then((r) => ({ ok: r.ok, ...r }))
-    );
+    const argv = [
+      'zkaccount',
+      'transfer',
+      '--wallet-id',
+      walletId,
+      '--password',
+      password,
+      '--from',
+      String(from),
+    ];
+    argv.push('--json');
+    jsonHandler(res, runRelayerCli(argv, { cwd: repoRoot }).then((r) => ({ ok: r.ok, ...r })));
   });
 
   app.post('/api/relayer/order/open-trade', requireToken, (req, res) => {

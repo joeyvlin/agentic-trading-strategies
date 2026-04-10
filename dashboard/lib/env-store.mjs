@@ -155,6 +155,7 @@ export function getEnvStateForApi() {
       secret: !!def.secret,
       type: def.type || 'text',
       options: def.options,
+      hideFromEnvForm: !!def.hideFromEnvForm,
       hasValue: m.hasValue,
       value: m.masked ? '' : m.value,
       masked: m.masked,

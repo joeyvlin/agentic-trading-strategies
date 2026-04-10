@@ -136,7 +136,7 @@ export function createMonitorService() {
         return {
           ok: false,
           message:
-            'Real mode requires CONFIRM_REAL_TRADING=YES in .env (set on the process that starts the dashboard).',
+            'Real mode requires allowing real trading: enable it in Twilight wallet (step 1) or set CONFIRM_REAL_TRADING=YES in .env.',
         };
       }
       pollIntervalMs = config.pollIntervalMs;
@@ -179,14 +179,24 @@ export function createMonitorService() {
      * Execute a single Strategy API strategy by id (same risk/exec as monitor).
      * @param {number|string} strategyId
      * @param {'simulation'|'real'|undefined} executionModeOverride
+     * @param {number|string|{ targetTotalNotionalUsd?: number, relayerEnv?: Record<string,string> }} [third]
+     *        Legacy: pass target USD as third arg. Prefer `{ targetTotalNotionalUsd, relayerEnv }` for wallet from UI.
      */
-    runStrategyOnce: async (strategyId, executionModeOverride, targetTotalNotionalUsd) => {
+    runStrategyOnce: async (strategyId, executionModeOverride, third) => {
       lastError = null;
       const config = loadAgentConfig(logger, { executionMode: executionModeOverride });
       if (config.executionMode === 'real' && process.env.CONFIRM_REAL_TRADING !== 'YES') {
         throw new Error(
-          'Real mode requires CONFIRM_REAL_TRADING=YES in .env (set on the process that starts the dashboard).'
+          'Real mode requires allowing real trading: enable it in Twilight wallet (step 1) or set CONFIRM_REAL_TRADING=YES in .env.'
         );
+      }
+      let targetTotalNotionalUsd;
+      let relayerEnv;
+      if (third != null && typeof third === 'object' && !Array.isArray(third)) {
+        targetTotalNotionalUsd = third.targetTotalNotionalUsd;
+        relayerEnv = third.relayerEnv;
+      } else {
+        targetTotalNotionalUsd = third;
       }
       const result = await runOneCycleForStrategy({
         strategyId,
@@ -194,6 +204,7 @@ export function createMonitorService() {
         portfolio,
         logger,
         targetTotalNotionalUsd,
+        relayerEnv,
       });
       lastCycle = {
         at: new Date().toISOString(),

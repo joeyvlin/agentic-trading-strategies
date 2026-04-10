@@ -47,10 +47,12 @@
       <a href="#sec-wallet">Wallet</a>
       <a href="#sec-faucet">Faucet</a>
       <a href="#sec-manage">Manage</a>
+      <a href="#sec-zkos">ZkOS</a>
       <a href="#sec-keys">CEX keys</a>
       <a href="#sec-agent">Auto agent</a>
+      <a href="#sec-trade-desk">Trades</a>
       <a href="#sec-strategies">Best trades</a>
-      <a href="#sec-agent-pnl">Agent P&amp;L</a>
+      <a href="#sec-agent-pnl">P&amp;L</a>
       <a href="#sec-journal">Journal</a>
     </nav>
 
@@ -91,12 +93,11 @@
       <section class="card wide" id="sec-wallet">
         <h2><span class="step-num">1</span> Twilight wallet</h2>
         <p class="muted">
-          The dashboard runs <code>relayer-cli</code> on the server. <strong>Create wallet</strong> requires a
-          <strong>wallet ID</strong> (any label stored in the local wallet DB, often your Twilight address after
-          creation) and a <strong>password</strong> to encrypt the wallet file — same as
-          <code>relayer-cli wallet create --wallet-id … --password …</code>. The CLI may also print a
-          <strong>mnemonic once</strong>; save it offline. You can omit typing ID/password here if
-          <code>NYKS_WALLET_ID</code> and <code>NYKS_WALLET_PASSPHRASE</code> are set in <code>.env</code>.
+          The dashboard runs <code>relayer-cli</code> on the server. Choose the <strong>session wallet</strong> and
+          <strong>encryption password</strong> here — all faucet, manage, and relayer actions below use these
+          credentials (no separate password fields). You can omit them if <code>NYKS_WALLET_ID</code> and
+          <code>NYKS_WALLET_PASSPHRASE</code> are set in <code>.env</code>. <strong>Create wallet</strong> still uses
+          its own fields for new wallet encryption.
         </p>
         <div class="field-grid">
           <label class="field wide">
@@ -106,14 +107,25 @@
             </select>
           </label>
           <label class="field">
-            <span>Wallet password</span>
-            <input type="password" id="wallet-pass" autocomplete="off" placeholder="or NYKS_WALLET_PASSPHRASE" />
+            <span>Wallet encryption password</span>
+            <input type="password" id="wallet-pass" autocomplete="off" placeholder="or NYKS_WALLET_PASSPHRASE in .env" />
           </label>
         </div>
         <div class="btn-row">
           <button type="button" class="btn primary" id="btn-wallet-refresh">Refresh list</button>
         </div>
         <p class="hint" id="wallet-select-hint" role="status"></p>
+
+        <div class="wallet-real-trading card-inset">
+          <label class="inline-check wallet-real-toggle">
+            <input type="checkbox" id="chk-confirm-real-trading" />
+            <span
+              >I understand the risk — <strong>allow real trading</strong> (live CEX / relayer orders). Writes
+              <code>CONFIRM_REAL_TRADING=YES</code> to <code>.env</code> and applies immediately.</span
+            >
+          </label>
+          <p class="hint small" id="confirm-real-trading-hint"></p>
+        </div>
 
         <h3 class="subhead">Create wallet</h3>
         <div class="field-grid">
@@ -142,9 +154,18 @@
           Requires <code>FAUCET_BASE_URL</code> in <code>.env</code> (e.g. testnet
           <code>https://faucet-rpc.twilight.rest</code>). The server runs
           <code>relayer-cli wallet balance</code> to read your Twilight address, then calls the faucet HTTP API
-          (<code>POST /faucet</code>). If you leave the password blank here, the Session wallet password (or server
-          <code>NYKS_WALLET_PASSPHRASE</code>) is used.
+          (<code>POST /faucet</code>). Password comes from <strong>Twilight wallet</strong> (step 1) or
+          <code>NYKS_WALLET_PASSPHRASE</code> in <code>.env</code>.
         </p>
+        <p class="muted small" id="faucet-arch-hint">
+          The desk runs on your machine and loads the repo <code>.env</code> into the <strong>dashboard server
+          process</strong>. <code>relayer-cli</code> inherits that environment (LCD, RPC, ZkOS, relayer,
+          <code>NETWORK_TYPE</code>, faucet). There is no separate “dashboard testnet URL”: whatever is in
+          <code>.env</code> is what the CLI uses. <strong>Test on-chain sats</strong> from <code>POST /mint</code> are
+          for <strong>Twilight testnet</strong> only — use <code>NETWORK_TYPE=testnet</code> and matching endpoints, then
+          restart the server after changing <code>.env</code>.
+        </p>
+        <p class="muted small" id="faucet-env-line" aria-live="polite"></p>
         <h3 class="subhead">Wallet for faucet</h3>
         <div class="field-grid">
           <label class="field wide">
@@ -153,35 +174,47 @@
               <option value="">— Select wallet —</option>
             </select>
           </label>
-          <label class="field">
-            <span>Encryption password</span>
-            <input
-              type="password"
-              id="faucet-wallet-pass"
-              autocomplete="off"
-              placeholder="Same as Session wallet, or leave empty if in .env"
-            />
-          </label>
         </div>
         <p class="hint small" id="faucet-creds-hint">
           List updates when you refresh wallets in step 1. Changing the session wallet also updates this dropdown.
         </p>
         <label class="inline-check">
           <input type="checkbox" id="chk-faucet-sats" />
-          <span>Also request test satoshis (<code>POST /mint</code>)</span>
+          <span>Also request test on-chain sats (<code>POST /mint</code>, testnet only)</span>
         </label>
+        <p class="hint small" id="faucet-mint-warning" hidden>
+          Test sats mint is disabled or unreliable until <code>NETWORK_TYPE=testnet</code> and the testnet faucet URL are
+          set on the server — see the line above. Apply the testnet preset, save <code>.env</code>, reload env, restart the
+          dashboard.
+        </p>
         <div class="btn-row">
-          <button type="button" class="btn primary" id="btn-faucet">Request from faucet</button>
+          <button type="button" class="btn primary" id="btn-faucet">Request from faucet (HTTP)</button>
+          <button type="button" class="btn" id="btn-faucet-cli" title="Runs relayer-cli wallet faucet — SDK get_test_tokens">
+            CLI: wallet faucet (SDK)
+          </button>
         </div>
+        <p class="hint small" id="faucet-cli-hint">
+          If NYKS/mint HTTP calls succeed but <code>SATS</code> stays <code>0</code> in <code>wallet balance</code>, use
+          <strong>CLI: wallet faucet</strong>. That runs the same <code>get_test_tokens</code> path as the
+          <a href="https://github.com/twilight-project/nyks-wallet/blob/main/QuickStart.md" rel="noopener"
+            >nyks-wallet QuickStart</a
+          >, which can differ from raw <code>POST /faucet</code> + <code>POST /mint</code>.
+        </p>
+        <div id="faucet-result-summary" class="faucet-result-summary" hidden aria-live="polite">
+          <p id="faucet-step-nyks" class="faucet-step"></p>
+          <p id="faucet-step-mint" class="faucet-step"></p>
+        </div>
+        <p id="faucet-post-mint-hint" class="hint small faucet-post-mint-hint" hidden></p>
         <pre class="out out-compact" id="faucet-out" hidden></pre>
       </section>
 
       <section class="card wide" id="sec-manage">
         <h2><span class="step-num">3</span> Manage wallet</h2>
         <p class="muted">
-          Read-only and session actions via <code>relayer-cli</code>. ZkOS and live orders stay under
-          <em>Advanced</em> below (gated by <code>RELAYER_ALLOW_DASHBOARD_*</code>). Most actions need the wallet
-          encryption password (here or in Session wallet, or <code>NYKS_WALLET_PASSPHRASE</code> on the server).
+          Read-only and session actions via <code>relayer-cli</code>. For <strong>ZkOS fund / account index</strong>, use
+          <a href="#sec-zkos">ZkOS (step 3b)</a>. Advanced below still has duplicate ZkOS tools and live orders (gated by
+          <code>RELAYER_ALLOW_DASHBOARD_*</code>). Use the password from <strong>Twilight wallet</strong> (step 1), or
+          <code>NYKS_WALLET_PASSPHRASE</code> on the server.
         </p>
         <h3 class="subhead">Wallet for these commands</h3>
         <div class="field-grid">
@@ -190,15 +223,6 @@
             <select id="manage-wallet-select">
               <option value="">— Select wallet —</option>
             </select>
-          </label>
-          <label class="field">
-            <span>Encryption password</span>
-            <input
-              type="password"
-              id="manage-wallet-pass"
-              autocomplete="off"
-              placeholder="Same as Session wallet, or leave empty if in .env"
-            />
           </label>
         </div>
         <p class="hint small" id="manage-creds-hint">
@@ -217,6 +241,76 @@
           <span>Accounts: on-chain only</span>
         </label>
         <pre class="out" id="manage-out"></pre>
+      </section>
+
+      <section class="card wide" id="sec-zkos">
+        <h2><span class="step-num">3b</span> ZkOS account (Twilight)</h2>
+        <p class="muted">
+          Real <strong>Twilight</strong> legs need a <strong>funded ZkOS trading account</strong> (an on-chain
+          <strong>NYKS wallet</strong> comes first in step 1 — see skill doc
+          <code>skills/twilight-protocol-agentskill/reference-trader.md</code>, “Wallet vs ZkOS”). You do
+          <strong>not</strong> create an empty ZkOS account separately: the first <strong>Fund</strong> moves sats from
+          your chain balance into ZkOS (usually index 0). Use the same wallet and password as <strong>step 1</strong>.
+        </p>
+        <div class="card-inset zkos-allow-block">
+          <label class="inline-check wallet-real-toggle">
+            <input type="checkbox" id="chk-allow-dashboard-zk" />
+            <span
+              >Allow <strong>ZkOS</strong> actions from this dashboard (fund / rotate). Writes
+              <code>RELAYER_ALLOW_DASHBOARD_ZK=YES</code> to <code>.env</code> and applies immediately (same pattern as
+              “Allow real trading”).</span
+            >
+          </label>
+          <p class="hint small" id="zkos-allow-hint"></p>
+        </div>
+        <p class="hint small" id="zkos-gate-line"></p>
+        <div class="zkos-balance-row">
+          <p class="zkos-balance-line">
+            On-chain BTC (SATS) for <code>zkaccount fund</code>:
+            <strong id="zkos-balance-value">—</strong>
+            <span id="zkos-balance-nyks" class="muted"></span>
+            <span id="zkos-balance-pending" class="muted"></span>
+          </p>
+          <button type="button" class="btn small" id="btn-zkos-refresh-balance">Refresh balance</button>
+        </div>
+        <p class="hint small" id="zkos-balance-parse-hint" hidden></p>
+        <div class="field-grid">
+          <label class="field wide zkos-pct-field">
+            <span
+              >Fund % of spendable <span id="zkos-fund-pct-readout" class="muted">0%</span>
+              <span class="muted small">(move slider after refresh)</span></span
+            >
+            <input type="range" id="zkos-fund-pct" min="0" max="100" value="0" disabled />
+          </label>
+          <p class="hint small zkos-fee-reserve-hint">
+            At high percentages (most of your spendable), the slider shaves a small reserve for fee edge cases. If you
+            fund a modest fraction and still see “Insufficient balance”, that is usually <strong>not</strong> fees — the
+            spendable figure here may not match what the relayer can use; compare Manage → Balance output.
+          </p>
+          <label class="field">
+            <span>Fund (sats)</span>
+            <input type="text" id="zkos-fund-sats" inputmode="numeric" placeholder="e.g. 10000" />
+          </label>
+          <label class="field">
+            <span>Rotate from index</span>
+            <input type="text" id="zkos-rotate-from" inputmode="numeric" placeholder="0" />
+          </label>
+          <label class="field">
+            <span>Default account index (TWILIGHT_ACCOUNT_INDEX)</span>
+            <input type="text" id="zkos-strategy-index" inputmode="numeric" placeholder="0" />
+          </label>
+        </div>
+        <p class="hint small">
+          <strong>Save default index</strong> writes <code>TWILIGHT_ACCOUNT_INDEX</code> to <code>.env</code> for real
+          strategy runs and reloads the process environment.
+        </p>
+        <div class="btn-row">
+          <button type="button" class="btn primary" id="btn-zkos-accounts">List ZkOS accounts</button>
+          <button type="button" class="btn primary danger" id="btn-zkos-fund">Fund account</button>
+          <button type="button" class="btn danger" id="btn-zkos-transfer">Rotate (transfer)</button>
+          <button type="button" class="btn" id="btn-zkos-save-index">Save default index</button>
+        </div>
+        <pre class="out" id="zkos-out"></pre>
       </section>
 
       <section class="card wide" id="sec-keys">
@@ -266,7 +360,7 @@
           Edits <code>configs/agent.monitor.yaml</code> (YAML comments are not preserved on save). The monitor polls the
           Strategy API, enforces risk caps, then runs in <strong>simulation</strong> or <strong>real</strong> mode per
           <code>execution.mode</code> and <code>AGENT_MODE</code> in <code>.env</code>. Real trading also requires
-          <code>CONFIRM_REAL_TRADING=YES</code>.
+          <strong>Allow real trading</strong> in Twilight wallet (step 1), which writes <code>CONFIRM_REAL_TRADING</code> to <code>.env</code>.
         </p>
         <div class="field-grid">
           <label class="field">
@@ -316,9 +410,77 @@
         <p class="hint" id="last-cycle"></p>
       </section>
 
+      <section class="card wide" id="sec-trade-desk">
+        <div class="card-head">
+          <h2><span class="step-num">6</span> Trades &amp; venue snapshot</h2>
+          <div class="btn-row">
+            <button type="button" class="btn small" id="btn-trade-desk-refresh">Refresh</button>
+            <label class="inline-check">
+              <input type="checkbox" id="chk-trade-desk-auto" checked />
+              <span>Every 20s</span>
+            </label>
+          </div>
+        </div>
+        <p class="muted" id="trade-desk-meta"></p>
+        <p class="muted small">
+          Agent runs (saved to disk) with Twilight / CEX execution summaries. Rows with the same strategy share a
+          colored edge. Ledger status links open positions in Agent P&amp;L. Live blocks query Binance / Bybit (ccxt) and
+          Twilight <code>order account-summary</code> (account from <code>TWILIGHT_ACCOUNT_INDEX</code>).
+        </p>
+        <h3 class="subhead">Agent executions (pending / open / history)</h3>
+        <div class="table-wrap table-wrap-scroll">
+          <table class="trade-desk-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Strategy</th>
+                <th>Logical trade</th>
+                <th>Mode</th>
+                <th>Ledger</th>
+                <th>Twilight</th>
+                <th>CEX</th>
+              </tr>
+            </thead>
+            <tbody id="trade-desk-exec-body"></tbody>
+          </table>
+        </div>
+        <h3 class="subhead">Binance (live)</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>Side</th>
+                <th>Notional</th>
+                <th>Unreal PnL</th>
+                <th>Entry</th>
+              </tr>
+            </thead>
+            <tbody id="trade-desk-binance-body"></tbody>
+          </table>
+        </div>
+        <h3 class="subhead">Bybit (live)</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>Side</th>
+                <th>Notional</th>
+                <th>Unreal PnL</th>
+                <th>Entry</th>
+              </tr>
+            </thead>
+            <tbody id="trade-desk-bybit-body"></tbody>
+          </table>
+        </div>
+        <h3 class="subhead">Twilight account (live)</h3>
+        <pre class="out out-compact" id="trade-desk-twilight-out">Loading…</pre>
+      </section>
+
       <section class="card wide" id="sec-strategies">
         <div class="card-head">
-          <h2><span class="step-num">6</span> Latest best strategies</h2>
+          <h2><span class="step-num">7</span> Latest best strategies</h2>
           <div class="btn-row">
             <button type="button" class="btn small" id="btn-strategies-refresh">Refresh</button>
             <label class="inline-check">
@@ -348,13 +510,13 @@
         <p class="hint">
           <strong>Sim</strong> runs one agent cycle for that strategy in <strong>simulation</strong> mode.
           <strong>Real</strong> uses your YAML/env execution mode and requires exchange keys and
-          <code>CONFIRM_REAL_TRADING=YES</code> for live orders.
+          <strong>Allow real trading</strong> in Twilight wallet (step 1).
         </p>
       </section>
 
       <section class="card wide" id="sec-agent-pnl">
         <div class="card-head">
-          <h2><span class="step-num">7</span> Agent P&amp;L (positions)</h2>
+          <h2><span class="step-num">8</span> Agent P&amp;L (positions)</h2>
           <button type="button" class="btn small" id="btn-pnl-refresh">Refresh</button>
         </div>
         <p class="muted" id="pnl-note-line"></p>
@@ -391,7 +553,7 @@
 
       <section class="card wide" id="sec-journal">
         <div class="card-head">
-          <h2><span class="step-num">8</span> Trade journal</h2>
+          <h2><span class="step-num">9</span> Trade journal</h2>
           <button type="button" class="btn small" id="btn-journal-refresh">Refresh</button>
         </div>
         <p class="muted">
@@ -461,7 +623,7 @@
         </div>
       </section>
 
-      <details class="card wide advanced-block">
+      <details class="card wide advanced-block" id="sec-advanced">
         <summary>Advanced — agent monitor, YAML, logs, relayer orders</summary>
         <div class="advanced-inner">
           <section class="card inner-card">
@@ -630,13 +792,13 @@
         <div class="modal-balance-block">
           <button type="button" class="btn small" id="modal-real-fetch-balance">Load wallet balance snapshot</button>
           <p class="hint small" id="modal-real-balance-hint">
-            Uses credentials from <strong>Manage wallet</strong> (step 3) or Session wallet. Raw relayer output for
-            your reference — not financial advice.
+            Uses the wallet and password from <strong>Twilight wallet</strong> (step 1). Raw relayer output for your
+            reference — not financial advice.
           </p>
           <pre class="out out-compact modal-balance-pre" id="modal-real-balance-out" hidden></pre>
         </div>
         <p class="hint small">
-          Requires CEX / relayer setup and <code>CONFIRM_REAL_TRADING=YES</code> for live orders. Leg sizes scale
+          Requires CEX / relayer setup and <strong>Allow real trading</strong> in Twilight wallet for live orders. Leg sizes scale
           proportionally vs the strategy template (Twilight + CEX notionals).
         </p>
         <div class="btn-row modal-actions">

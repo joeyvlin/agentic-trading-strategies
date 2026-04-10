@@ -8,6 +8,7 @@
     "start": "node server.mjs"
   },
   "dependencies": {
+    "ccxt": "^4.4.0",
     "cors": "^2.8.5",
     "express": "^4.21.0",
     "js-yaml": "^4.1.0",

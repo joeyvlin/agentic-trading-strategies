@@ -108,6 +108,17 @@ relayer-cli wallet change-password --wallet-id <ID>
 
 Fund, withdraw, transfer, and split ZkOS trading accounts. All amounts accept one of `--amount` (sats), `--amount-mbtc`, or `--amount-btc`.
 
+### Wallet vs ZkOS account (ordering)
+
+These are **different** things; the docs and **Typical Trade Flow** below list the same sequence:
+
+1. **NYKS / Twilight wallet** — created or imported with `wallet create` / `wallet import`. Holds keys and your **on-chain** balance. **Do this first.**
+2. **ZkOS trading account** — there is **no** separate CLI step to “create an empty ZkOS account” before trading. The first time you run **`zkaccount fund --amount …`**, the relayer moves **on-chain sats** into a **new** ZkOS account (commonly index **0**). So **fund = create/populate the first ZkOS account** for that wallet.
+3. **Testnet** — use the faucet so `wallet balance` shows spendable sats, then fund ZkOS.
+4. **After a settled close** — rotate with `zkaccount transfer --from <INDEX>` before opening again (see **Account Reuse After Closing**).
+
+The dashboard **ZkOS (step 3b)** panel mirrors this: refresh on-chain balance → fund (optionally a % of spendable) → list accounts → set `TWILIGHT_ACCOUNT_INDEX` → rotate when needed.
+
 ```bash
 # Fund a new ZkOS trading account from on-chain sats
 relayer-cli zkaccount fund --amount 10000

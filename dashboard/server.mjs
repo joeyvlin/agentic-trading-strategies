@@ -9,7 +9,9 @@ import { createMonitorService } from './lib/monitor-service.mjs';
 import { registerDashboardDataRoutes } from './lib/dashboard-data-routes.mjs';
 import { registerEnvRoutes } from './lib/env-routes.mjs';
 import { getPositionPnlSummary, closePosition } from './lib/position-ledger.mjs';
+import { getTradeDeskSnapshot } from './lib/trade-desk.mjs';
 import { registerRelayerRoutes } from './lib/relayer-routes.mjs';
+import { sanitizeString } from './lib/relayer-cli.mjs';
 import { getRepoRoot } from './lib/persistence.mjs';
 
 /** Load repo `.env` before anything reads `process.env` (e.g. TWILIGHT_RELAYER_CLI). */
@@ -63,6 +65,16 @@ app.get('/api/logs', requireToken, (_req, res) => {
   res.json({ logs: monitor.getLogs() });
 });
 
+app.get('/api/trade-desk', requireToken, async (req, res) => {
+  try {
+    const q = String(req.query.walletId || req.query.wallet_id || '').trim();
+    const snap = await getTradeDeskSnapshot(q ? { walletId: q } : {});
+    res.json(snap);
+  } catch (e) {
+    res.status(500).json({ error: e.message || String(e) });
+  }
+});
+
 app.get('/api/pnl', requireToken, async (_req, res) => {
   try {
     const base = monitor.getPnlSummary();
@@ -109,10 +121,31 @@ app.post('/api/monitor/run-strategy', requireToken, async (req, res) => {
     return res.status(400).json({ error: 'strategyId is required' });
   }
   try {
-    const result = await monitor.runStrategyOnce(strategyId, mode, targetTotalNotionalUsd);
+    const relayerEnv = {};
+    const wid = sanitizeString(req.body?.walletId ?? req.body?.wallet_id ?? '');
+    const pw = typeof req.body?.password === 'string' ? req.body.password : '';
+    if (wid) relayerEnv.NYKS_WALLET_ID = wid;
+    if (pw) relayerEnv.NYKS_WALLET_PASSPHRASE = pw;
+    const runOpts =
+      targetTotalNotionalUsd !== undefined || Object.keys(relayerEnv).length
+        ? {
+            ...(targetTotalNotionalUsd !== undefined ? { targetTotalNotionalUsd } : {}),
+            ...(Object.keys(relayerEnv).length ? { relayerEnv } : {}),
+          }
+        : undefined;
+    const result = await monitor.runStrategyOnce(strategyId, mode, runOpts ?? targetTotalNotionalUsd);
     res.json(result);
   } catch (e) {
-    res.status(500).json({ error: e.message || String(e) });
+    const msg = e.message || String(e);
+    if (/CONFIRM_REAL_TRADING/i.test(msg)) {
+      return res.status(403).json({
+        error: msg,
+        code: 'CONFIRM_REAL_TRADING_REQUIRED',
+        hint:
+          'Enable “Allow real trading” in Twilight wallet (step 1), or set CONFIRM_REAL_TRADING=YES in .env. The dashboard reloads env when you save from the UI; on Render set the variable on the service.',
+      });
+    }
+    res.status(500).json({ error: msg });
   }
 });
 
