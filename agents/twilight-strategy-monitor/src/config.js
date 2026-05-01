@@ -79,7 +79,7 @@ export function loadAgentConfig(logger, options = {}) {
       maxDailyLossUsd: Number(doc.risk?.maxDailyLossUsd ?? 5000),
     },
     executionMode: mode,
-    strategyApiBase: process.env.STRATEGY_API_BASE_URL || 'http://134.199.214.129:3000',
+    strategyApiBase: process.env.STRATEGY_API_BASE_URL || 'https://strategy.lunarpunk.xyz',
     strategyApiKey: process.env.STRATEGY_API_KEY || '',
   };
 }

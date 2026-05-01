@@ -46,11 +46,13 @@ export function maskedExchangeKeysForClient() {
       configured: !!(bin.apiKey && bin.apiSecret),
       apiKeySuffix: maskKey(bin.apiKey),
       useTestnet: !!bin.useTestnet,
+      lastStatus: bin.lastStatus || null,
     },
     bybit: {
       configured: !!(by.apiKey && by.apiSecret),
       apiKeySuffix: maskKey(by.apiKey),
       useTestnet: !!by.useTestnet,
+      lastStatus: by.lastStatus || null,
     },
   };
 }
@@ -65,6 +67,7 @@ function mergeVenue(prevV, bodyV) {
     apiSecret: typeof bodyV.apiSecret === 'string' ? bodyV.apiSecret : p.apiSecret || '',
     useTestnet:
       typeof bodyV.useTestnet === 'boolean' ? bodyV.useTestnet : !!p.useTestnet,
+    lastStatus: p.lastStatus || null,
   };
 }
 
@@ -77,6 +80,38 @@ export function saveExchangeKeys(body) {
   const next = {
     binance: mergeVenue(prev.binance, body?.binance),
     bybit: mergeVenue(prev.bybit, body?.bybit),
+  };
+  const p = keysPath();
+  const tmp = `${p}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(next, null, 2), 'utf8');
+  fs.renameSync(tmp, p);
+  try {
+    fs.chmodSync(p, 0o600);
+  } catch {
+    /* ignore on Windows */
+  }
+  return maskedExchangeKeysForClient();
+}
+
+export function updateExchangeKeyLastStatus(venue, status) {
+  if (venue !== 'binance' && venue !== 'bybit') {
+    throw new Error('venue must be "binance" or "bybit"');
+  }
+  ensureDir();
+  const prev = loadExchangeKeys() || {};
+  const prevVenue = prev[venue] || {};
+  const next = {
+    ...prev,
+    [venue]: {
+      apiKey: prevVenue.apiKey || '',
+      apiSecret: prevVenue.apiSecret || '',
+      useTestnet: !!prevVenue.useTestnet,
+      lastStatus: {
+        ok: !!status?.ok,
+        checkedAt: status?.checkedAt || new Date().toISOString(),
+        message: String(status?.message || ''),
+      },
+    },
   };
   const p = keysPath();
   const tmp = `${p}.${process.pid}.tmp`;

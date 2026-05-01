@@ -145,6 +145,14 @@ app.post('/api/monitor/run-strategy', requireToken, async (req, res) => {
           'Enable “Allow real trading” in Twilight wallet (step 1), or set CONFIRM_REAL_TRADING=YES in .env. The dashboard reloads env when you save from the UI; on Render set the variable on the service.',
       });
     }
+    if (/\[ZKOS_PREFLIGHT\]/i.test(msg)) {
+      return res.status(409).json({
+        error: msg,
+        code: 'ZKOS_ACCOUNT_REQUIRED',
+        hint:
+          'Fund a ZkOS account (step 3b) if the list is empty, then save TWILIGHT_ACCOUNT_INDEX for an index that exists.',
+      });
+    }
     res.status(500).json({ error: msg });
   }
 });

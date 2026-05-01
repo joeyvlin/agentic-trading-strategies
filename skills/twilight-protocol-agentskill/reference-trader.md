@@ -1,5 +1,142 @@
 # Twilight relayer-cli (reference)
 
+Synced from:
+- [nyks-wallet/docs/relayer-cli.md](https://github.com/twilight-project/nyks-wallet/blob/main/docs/relayer-cli.md)
+- [nyks-wallet/docs/cli-command-rules.md](https://github.com/twilight-project/nyks-wallet/blob/main/docs/cli-command-rules.md)
+- [nyks-wallet/docs/order-lifecycle.md](https://github.com/twilight-project/nyks-wallet/blob/main/docs/order-lifecycle.md)
+
+Use this file for practical command flow and preconditions. For full upstream details, open the links above.
+
+## Install / update relayer-cli
+
+Prebuilt binaries are available in nyks-wallet releases.
+
+```bash
+# macOS / Linux install script
+curl -sSfL https://raw.githubusercontent.com/twilight-project/nyks-wallet/main/install.sh | sh
+
+# verify
+./relayer-cli --version
+./relayer-cli wallet --help
+```
+
+Key additions in newer builds include `wallet faucet` (testnet only) and `update`.
+
+## Core environment
+
+Main variables used by CLI + dashboard:
+
+```bash
+NETWORK_TYPE=mainnet|testnet
+NYKS_LCD_BASE_URL=...
+NYKS_RPC_BASE_URL=...
+ZKOS_SERVER_URL=...
+RELAYER_API_RPC_SERVER_URL=...
+RELAYER_PROGRAM_JSON_PATH=./relayerprogram.json
+NYKS_WALLET_ID=...
+NYKS_WALLET_PASSPHRASE=...
+FAUCET_BASE_URL=...   # testnet only
+```
+
+Mainnet defaults:
+- LCD: `https://lcd.twilight.org`
+- RPC: `https://rpc.twilight.org`
+- ZkOS: `https://zkserver.twilight.org`
+- Relayer API: `https://api.ephemeral.fi/api`
+
+Testnet defaults:
+- LCD: `https://lcd.twilight.rest`
+- RPC: `https://rpc.twilight.rest`
+- ZkOS: `https://nykschain.twilight.rest/zkos`
+- Relayer API: `https://relayer.twilight.rest/api`
+- Faucet: `https://faucet-rpc.twilight.rest`
+
+## Wallet + credentials
+
+Typical setup:
+
+```bash
+relayer-cli wallet create --wallet-id <ID> --password <PASS>
+# or
+relayer-cli wallet import --wallet-id <ID> --password <PASS>
+
+relayer-cli wallet info --wallet-id <ID> --password <PASS>
+relayer-cli wallet balance --wallet-id <ID> --password <PASS>
+relayer-cli wallet accounts --wallet-id <ID> --password <PASS>
+```
+
+Credential resolution order:
+- Wallet ID: flag -> unlocked session -> `NYKS_WALLET_ID` -> error
+- Password: flag -> unlocked session -> `NYKS_WALLET_PASSPHRASE` -> prompt/none
+
+## Wallet vs ZkOS account (critical)
+
+There is no separate "create empty ZkOS account" command.
+
+The first successful fund creates the first ZkOS account:
+
+```bash
+relayer-cli zkaccount fund --amount 5000
+```
+
+Then:
+- list accounts: `relayer-cli wallet accounts ...`
+- set/use `TWILIGHT_ACCOUNT_INDEX` for order actions
+- after settled close, rotate account:
+
+```bash
+relayer-cli zkaccount transfer --account-index <INDEX>
+```
+
+## Trading flow (high-level)
+
+```bash
+# 1) ensure funded ZkOS account exists
+relayer-cli wallet accounts --wallet-id <ID> --password <PASS>
+
+# 2) open trade
+relayer-cli order open-trade --account-index <INDEX> --side LONG --entry-price 65000 --leverage 5
+
+# 3) close
+relayer-cli order close-trade --account-index <INDEX>
+
+# 4) unlock settled close
+relayer-cli order unlock-close-order --account-index <INDEX>
+
+# 5) rotate before reuse
+relayer-cli zkaccount transfer --account-index <INDEX>
+```
+
+See upstream `order-lifecycle.md` for exact state transitions (`Coin`/`Memo`, `ORDERTX`/`LENDTX`).
+
+## Testnet faucet vs mainnet BTC flow
+
+- `wallet faucet` is **testnet only**.
+- Mainnet uses BTC registration/deposit/withdrawal flow (see `reference-btc-onboarding.md`).
+
+Testnet faucet command:
+
+```bash
+relayer-cli wallet faucet --wallet-id <ID> --password <PASS>
+```
+
+If SATS still show zero after faucet/mint HTTP success:
+- verify active wallet + recipient address match,
+- check tx status on LCD (`/cosmos/tx/v1beta1/txs/<hash>`),
+- inspect `code` and `raw_log` for chain-side errors.
+
+## Important command preconditions (quick checklist)
+
+- `wallet faucet`: testnet only; wallet loadable
+- `wallet register-btc` / `wallet deposit-btc` / `wallet withdraw-btc`: mainnet only
+- `zkaccount fund`: requires spendable on-chain sats
+- `order open-trade`: requires existing funded ZkOS account index
+- `order unlock-close-order`: order must be settled/liquidated first
+
+For full command-by-command preconditions, see:
+- [cli-command-rules.md](https://github.com/twilight-project/nyks-wallet/blob/main/docs/cli-command-rules.md)
+# Twilight relayer-cli (reference)
+
 Synced from [agentskill `.claude/skills/twilight-trader.md`](https://github.com/twilight-project/agentskill/blob/main/.claude/skills/twilight-trader.md). Build the binary from [nyks-wallet](https://github.com/twilight-project/nyks-wallet).
 
 ## Environment

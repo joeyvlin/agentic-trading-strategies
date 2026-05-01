@@ -11,7 +11,8 @@
     "start": "node src/index.js",
     "start:sim": "AGENT_MODE=simulation node src/index.js",
     "start:real": "AGENT_MODE=real node src/index.js",
-    "once": "node src/index.js --once"
+    "once": "node src/index.js --once",
+    "check:upstream": "node scripts/check-upstream.mjs"
   },
   "engines": {
     "node": ">=18"

@@ -45,7 +45,7 @@ export function readEnvFile() {
   return entries;
 }
 
-const DEFAULT_STRATEGY_API_BASE = 'http://134.199.214.129:3000';
+const DEFAULT_STRATEGY_API_BASE = 'https://strategy.lunarpunk.xyz';
 
 /**
  * Strategy API URL + key: use non-empty `process.env`, else values from repo `.env` on disk.

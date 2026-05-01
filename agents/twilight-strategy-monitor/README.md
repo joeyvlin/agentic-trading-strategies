@@ -81,6 +81,12 @@ export BYBIT_USE_TESTNET=1
 | `configs/agent.monitor.yaml` | Poll interval, strategy filters (`/api/strategies` query params), risk caps |
 | `.env` | Secrets, `AGENT_MODE`, `CONFIRM_REAL_TRADING`, exchange keys |
 
+Check whether local Strategy API defaults still match upstream skill docs:
+
+```bash
+npm run check:upstream
+```
+
 Override config path:
 
 ```bash

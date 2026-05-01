@@ -1,10 +1,25 @@
 const WALLET_STORAGE_KEY = 'selectedTwilightWalletId';
+const WALLET_SESSION_STORAGE_KEY = 'twilightWalletSessionV1';
+const WALLET_SESSION_MODE_STORAGE_KEY = 'twilightWalletSessionModeV1';
+const SECTION_COLLAPSE_STORAGE_KEY = 'dashboardCollapsedSectionsV1';
 
 /** Set by /api/relayer/wallet/balance-sats for ZkOS fund slider. */
 let zkosSpendableSats = null;
 
 /** Last successful `/api/relayer/meta` payload (faucet / network hints). */
 let relayerMetaCache = null;
+/** Last faucet HTTP recipient address from `/api/relayer/wallet/faucet`. */
+let lastFaucetRecipientAddress = '';
+/** Last faucet tx hashes captured from response. */
+let lastFaucetNyksTxHash = '';
+let lastFaucetMintTxHash = '';
+/** Best-effort UI gate for enabling Real strategy runs. */
+let zkosAccountAvailability = {
+  checked: false,
+  canRunReal: false,
+  accountCount: 0,
+  reason: 'Checking ZkOS accounts…',
+};
 
 const api = (path, opts = {}) => {
   const headers = { ...opts.headers };
@@ -39,6 +54,7 @@ const SECTION_BY_CONTEXT = {
   'Strategy run skipped': 'sec-strategies',
   'Real trade': 'sec-strategies',
   'Real trading toggle': 'sec-wallet',
+  'Twilight network switch': 'sec-wallet',
   'Wallet list': 'sec-wallet',
   'Wallet / manage': 'sec-manage',
   'Manage wallet': 'sec-manage',
@@ -64,7 +80,9 @@ const SECTION_BY_CONTEXT = {
   'Mainnet preset': 'sec-env',
   'Example Strategy API key': 'sec-env',
   'CEX keys status': 'sec-keys',
+  'Test CEX key': 'sec-keys',
   'Faucet': 'sec-faucet',
+  'Faucet tx status': 'sec-faucet',
   'Create wallet': 'sec-wallet',
   'Save CEX keys': 'sec-keys',
   'Add journal entry': 'sec-journal',
@@ -128,6 +146,32 @@ function showSectionAlert(variant, message, context) {
   return true;
 }
 
+function formatRequestForError(path, opts = {}) {
+  const method = String(opts.method || 'GET').toUpperCase();
+  let extra = '';
+  if (opts.body != null && opts.body !== '') {
+    if (typeof opts.body === 'string') {
+      try {
+        const o = JSON.parse(opts.body);
+        if (o && typeof o === 'object' && !Array.isArray(o)) {
+          extra = ` body keys: ${Object.keys(o).join(', ')}`;
+        }
+      } catch {
+        extra = ' body: (non-JSON or empty)';
+      }
+    }
+  }
+  return `${method} ${path}${extra}`;
+}
+
+function appendRequestLine(msg, path, opts) {
+  const base = String(msg || '').trim();
+  const line = formatRequestForError(path, opts);
+  if (!base) return `Request: ${line}`;
+  if (base.includes('Request:')) return base;
+  return `${base}\nRequest: ${line}`;
+}
+
 function parseApiErrorBody(text, status) {
   const st = status ?? '?';
   if (!text || !String(text).trim()) return `[${st}] (empty response body)`;
@@ -144,6 +188,11 @@ function parseApiErrorBody(text, status) {
     }
     if (msg && typeof j.hint === 'string' && j.hint.trim()) {
       msg += '\n' + j.hint.trim();
+    }
+    if (j.request && typeof j.request === 'object') {
+      const r = j.request;
+      const bits = [r.method, r.url || r.path].filter(Boolean).join(' ');
+      if (bits) msg = msg ? `${msg}\nUpstream request: ${bits}` : `Upstream request: ${bits}`;
     }
     if (msg) return `[${st}] ${msg}`;
     return `[${st}] ${String(text).slice(0, 1500)}`;
@@ -219,27 +268,37 @@ function showDashboardWarning(message, context = '') {
   while (wrap.children.length > 12) wrap.lastChild.remove();
 }
 
-async function readJson(path, opts) {
+async function readJson(path, opts = {}) {
   let res;
   try {
     res = await api(path, opts);
   } catch (e) {
-    throw new Error(`Network error: ${errMsg(e)}`);
+    throw new Error(appendRequestLine(`Network error: ${errMsg(e)}`, path, opts));
   }
   const text = await res.text();
   if (res.status === 401) {
     throw new Error(
-      'Unauthorized — set the dashboard token in the header if the server has DASHBOARD_TOKEN set (x-dashboard-token).'
+      appendRequestLine(
+        'Unauthorized — set the dashboard token in the header if the server has DASHBOARD_TOKEN set (x-dashboard-token).',
+        path,
+        opts
+      )
     );
   }
   if (!res.ok) {
-    throw new Error(parseApiErrorBody(text, res.status));
+    throw new Error(appendRequestLine(parseApiErrorBody(text, res.status), path, opts));
   }
   if (!text || !text.trim()) return {};
   try {
     return JSON.parse(text);
   } catch {
-    throw new Error(`Invalid JSON from server (${res.status}): ${text.slice(0, 400)}`);
+    throw new Error(
+      appendRequestLine(
+        `Invalid JSON from server (${res.status}): ${text.slice(0, 400)}`,
+        path,
+        opts
+      )
+    );
   }
 }
 
@@ -269,6 +328,66 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
+function loadCollapsedSectionsState() {
+  try {
+    const raw = localStorage.getItem(SECTION_COLLAPSE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveCollapsedSectionsState(state) {
+  try {
+    localStorage.setItem(SECTION_COLLAPSE_STORAGE_KEY, JSON.stringify(state || {}));
+  } catch {
+    /* ignore */
+  }
+}
+
+function setSectionCollapsed(section, btn, collapsed) {
+  section.classList.toggle('section-collapsed', !!collapsed);
+  btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  btn.textContent = collapsed ? 'Expand' : 'Collapse';
+}
+
+function initCollapsibleSections() {
+  const state = loadCollapsedSectionsState();
+  const sections = document.querySelectorAll('main.flow-grid > section.card.wide[id]');
+  for (const sec of sections) {
+    const id = sec.id;
+    let head = sec.querySelector(':scope > .card-head');
+    if (!head) {
+      const h2 = sec.querySelector(':scope > h2');
+      if (!h2) continue;
+      head = document.createElement('div');
+      head.className = 'card-head';
+      sec.insertBefore(head, h2);
+      head.appendChild(h2);
+    }
+
+    const already = head.querySelector('.section-collapse-toggle');
+    if (already) continue;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn small ghost section-collapse-toggle';
+    btn.dataset.sectionId = id;
+    head.appendChild(btn);
+
+    const collapsed = !!state[id];
+    setSectionCollapsed(sec, btn, collapsed);
+
+    btn.addEventListener('click', () => {
+      const next = !sec.classList.contains('section-collapsed');
+      setSectionCollapsed(sec, btn, next);
+      state[id] = next;
+      saveCollapsedSectionsState(state);
+    });
+  }
+}
+
 function walletSession() {
   const walletId = document.getElementById('wallet-select')?.value?.trim() || '';
   const password = document.getElementById('wallet-pass')?.value || '';
@@ -276,6 +395,90 @@ function walletSession() {
   if (walletId) o.walletId = walletId;
   if (password) o.password = password;
   return o;
+}
+
+function walletSessionMode() {
+  const sel = document.getElementById('wallet-session-mode');
+  const fromUi = sel?.value === 'remember' ? 'remember' : 'session';
+  return fromUi;
+}
+
+function walletSessionStorageForMode(mode) {
+  return mode === 'remember' ? localStorage : sessionStorage;
+}
+
+function persistWalletSessionMode(mode) {
+  localStorage.setItem(WALLET_SESSION_MODE_STORAGE_KEY, mode === 'remember' ? 'remember' : 'session');
+}
+
+function getPersistedWalletSessionMode() {
+  return localStorage.getItem(WALLET_SESSION_MODE_STORAGE_KEY) === 'remember' ? 'remember' : 'session';
+}
+
+function loadWalletSessionStorage() {
+  try {
+    const storage = walletSessionStorageForMode(walletSessionMode());
+    const raw = storage.getItem(WALLET_SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const j = JSON.parse(raw);
+    if (!j || typeof j !== 'object') return null;
+    return {
+      walletId: String(j.walletId || '').trim(),
+      password: typeof j.password === 'string' ? j.password : '',
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveWalletSessionStorage(walletId, password) {
+  const mode = walletSessionMode();
+  const storage = walletSessionStorageForMode(mode);
+  storage.setItem(
+    WALLET_SESSION_STORAGE_KEY,
+    JSON.stringify({ walletId: String(walletId || '').trim(), password: String(password || '') })
+  );
+  walletSessionStorageForMode(mode === 'remember' ? 'session' : 'remember').removeItem(WALLET_SESSION_STORAGE_KEY);
+  persistWalletSessionMode(mode);
+}
+
+function clearWalletSessionStorage() {
+  sessionStorage.removeItem(WALLET_SESSION_STORAGE_KEY);
+  localStorage.removeItem(WALLET_SESSION_STORAGE_KEY);
+}
+
+function updateWalletSessionStatus() {
+  const line = document.getElementById('wallet-session-status');
+  const loggedInBlock = document.getElementById('wallet-auth-logged-in');
+  const loggedOutBlock = document.getElementById('wallet-auth-logged-out');
+  const loggedInLabel = document.getElementById('wallet-auth-logged-in-label');
+  if (!line) return;
+  const mode = walletSessionMode();
+  const s = loadWalletSessionStorage();
+  if (s?.walletId && s.password) {
+    if (loggedInBlock) loggedInBlock.hidden = false;
+    if (loggedOutBlock) loggedOutBlock.hidden = true;
+    if (loggedInLabel) {
+      loggedInLabel.textContent =
+        mode === 'remember'
+          ? `Logged in as ${s.walletId}. Persistence: Remember on this device.`
+          : `Logged in as ${s.walletId}. Persistence: Session-only.`;
+    }
+    line.textContent =
+      mode === 'remember'
+        ? `Logged in: ${s.walletId} (remembered on this device/browser profile).`
+        : `Logged in: ${s.walletId} (session-only for this tab/browser run).`;
+    line.classList.remove('hint-error');
+  } else {
+    if (loggedInBlock) loggedInBlock.hidden = true;
+    if (loggedOutBlock) loggedOutBlock.hidden = false;
+    if (loggedInLabel) loggedInLabel.textContent = '';
+    line.textContent =
+      mode === 'remember'
+        ? 'Logged out: no remembered wallet session on this device.'
+        : 'Logged out: wallet session is not persisted beyond this tab/browser session.';
+    line.classList.remove('hint-error');
+  }
 }
 
 /** Panel-specific wallet id; password always from Twilight wallet (session) only. */
@@ -293,6 +496,74 @@ function credsFromPanel(selectId) {
 
 function faucetWalletCreds() {
   return credsFromPanel('faucet-wallet-select');
+}
+
+function parseAccountRowsFromStdout(stdout) {
+  const s = String(stdout || '');
+  if (!s.trim()) return 0;
+  if (/No ZkOS accounts found/i.test(s)) return 0;
+  const lines = s
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const rows = lines.filter((l) => /^\d+\s+/.test(l));
+  return rows.length;
+}
+
+async function refreshZkosAccountAvailability() {
+  const creds = walletSession();
+  if (!creds.walletId || !creds.password) {
+    zkosAccountAvailability = {
+      checked: true,
+      canRunReal: false,
+      accountCount: 0,
+      reason: 'Select wallet + password in step 1 to enable Real.',
+    };
+    return zkosAccountAvailability;
+  }
+  try {
+    const r = await readJson('/api/relayer/wallet/accounts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(creds),
+    });
+    const count = parseAccountRowsFromStdout(r?.stdout || '');
+    zkosAccountAvailability = {
+      checked: true,
+      canRunReal: count > 0,
+      accountCount: count,
+      reason:
+        count > 0
+          ? `ZkOS account(s) detected: ${count}`
+          : 'No ZkOS accounts yet. Fund one in step 3b first.',
+    };
+  } catch (e) {
+    zkosAccountAvailability = {
+      checked: true,
+      canRunReal: false,
+      accountCount: 0,
+      reason: `ZkOS check failed: ${errMsg(e)}`,
+    };
+  }
+  return zkosAccountAvailability;
+}
+
+function parseWalletInfoStdout(stdout) {
+  const raw = String(stdout || '').trim();
+  if (!raw) return null;
+  try {
+    const j = JSON.parse(raw);
+    const addr = j.address || j.walletAddress || j.twilightAddress || j.accountAddress || '';
+    const btc = j.btc_address || j.btcAddress || '';
+    return { address: String(addr || '').trim(), btcAddress: String(btc || '').trim() };
+  } catch {
+    const addrMatch = raw.match(/(twilight1[0-9a-z]+)/i);
+    const btcMatch = raw.match(/(bc1[0-9a-z]+)/i);
+    return {
+      address: addrMatch ? addrMatch[1].trim() : '',
+      btcAddress: btcMatch ? btcMatch[1].trim() : '',
+    };
+  }
 }
 
 function manageWalletCreds() {
@@ -340,6 +611,23 @@ function syncZkosAllowToggle(entries) {
   }
 }
 
+function syncTwilightNetworkSwitch(entries) {
+  const sel = document.getElementById('twilight-network-mode');
+  const hint = document.getElementById('twilight-network-hint');
+  if (!sel) return;
+  const nt = (entries || []).find((r) => r.key === 'NETWORK_TYPE');
+  const value = String(nt?.value || '').trim().toLowerCase();
+  const effective = value === 'mainnet' ? 'mainnet' : 'testnet';
+  sel.value = effective;
+  if (hint) {
+    hint.textContent =
+      effective === 'mainnet'
+        ? 'Mainnet selected. Faucet actions are expected to be unavailable on mainnet.'
+        : 'Testnet selected. Faucet + mint paths are available when testnet endpoints are configured.';
+    hint.classList.remove('hint-error');
+  }
+}
+
 function formatRelayerMissingMessage(raw) {
   const m = String(raw || '');
   if (/ENOENT|not found/i.test(m) && /relayer/i.test(m)) {
@@ -357,7 +645,8 @@ function formatRelayerMissingMessage(raw) {
 async function refreshWalletList(selectId = null, opts = {}) {
   const sel = document.getElementById('wallet-select');
   const hint = document.getElementById('wallet-select-hint');
-  const prev = selectId || localStorage.getItem(WALLET_STORAGE_KEY) || sel.value;
+  const savedSession = loadWalletSessionStorage();
+  const prev = selectId || savedSession?.walletId || localStorage.getItem(WALLET_STORAGE_KEY) || sel.value;
   try {
     const r = await readJson('/api/relayer/wallet/list', {
       method: 'POST',
@@ -383,6 +672,11 @@ async function refreshWalletList(selectId = null, opts = {}) {
     sel.value = pick;
     if (pick) localStorage.setItem(WALLET_STORAGE_KEY, pick);
     else localStorage.removeItem(WALLET_STORAGE_KEY);
+    if (savedSession?.password) {
+      const pw = document.getElementById('wallet-pass');
+      if (pw && !pw.value) pw.value = savedSession.password;
+    }
+    updateWalletSessionStatus();
     syncPanelWalletSelectsFromSession();
     await refreshZkosBalance();
   } catch (e) {
@@ -435,6 +729,9 @@ function renderFaucetResponse(r) {
     postMint.hidden = true;
     postMint.textContent = '';
   }
+  lastFaucetRecipientAddress = String(r?.recipientAddress || '').trim();
+  lastFaucetNyksTxHash = parseFaucetStepTxHash(r?.nyks?.body || '') || '';
+  lastFaucetMintTxHash = parseFaucetStepTxHash(r?.mint?.body || '') || '';
   if (pre) pre.textContent = JSON.stringify(r, null, 2);
   if (summary) summary.hidden = false;
   if (stepNyks) {
@@ -480,6 +777,127 @@ function renderFaucetResponse(r) {
       'Mint succeeded over HTTP. If SATS still reads 0, wait a few minutes and refresh balance — see the note below the step lines.',
       'Faucet'
     );
+  }
+}
+
+async function checkFaucetTxStatus() {
+  const out = document.getElementById('faucet-tx-status-out');
+  if (!out) return;
+  const hashes = [
+    ['NYKS', lastFaucetNyksTxHash],
+    ['MINT', lastFaucetMintTxHash],
+  ].filter(([, h]) => !!h);
+  if (!hashes.length) {
+    out.hidden = false;
+    out.textContent = 'No faucet tx hash captured yet in this browser session. Run faucet first.';
+    showDashboardWarning('Run faucet first so tx hashes are available.', 'Faucet tx status');
+    return;
+  }
+  out.hidden = false;
+  out.textContent = 'Checking LCD tx status…';
+  try {
+    const extraHints = [];
+    const lines = [];
+    for (const [label, hash] of hashes) {
+      const r = await readJson('/api/tx-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ txHash: hash }),
+      });
+      const codeNum = Number(r.code ?? 0);
+      const state = codeNum === 0 ? 'SUCCESS' : `FAILED(code=${codeNum})`;
+      const rawLog = String(r.rawLog || '');
+      if (
+        codeNum === 11 &&
+        /clearing account/i.test(rawLog) &&
+        /does not exist/i.test(rawLog)
+      ) {
+        extraHints.push(
+          'Mint failed with code=11: missing clearing account for this Twilight address. ' +
+            'This is a chain-side precondition issue (not a wallet mismatch). ' +
+            'Use CLI faucet (SDK) first and/or initialize account state per current Twilight testnet procedure, then retry mint.'
+        );
+      }
+      lines.push(
+        `${label} ${hash}\n` +
+          `- state: ${state}\n` +
+          `- height: ${r.height || '(unknown)'}\n` +
+          `- timestamp: ${r.timestamp || '(unknown)'}\n` +
+          `- lcd: ${r.lcdBase || '(unknown)'}\n` +
+          (r.rawLog ? `- raw_log: ${rawLog.slice(0, 500)}` : '- raw_log: (empty)')
+      );
+    }
+    out.textContent =
+      lines.join('\n\n') +
+      (extraHints.length ? `\n\nHints:\n- ${extraHints.join('\n- ')}` : '');
+    if (extraHints.length) {
+      showDashboardWarning(extraHints.join('\n'), 'Faucet tx status');
+    } else {
+      showDashboardSuccess('Fetched tx status from LCD for latest faucet tx hashes.', 'Faucet tx status');
+    }
+  } catch (e) {
+    const m = errMsg(e);
+    out.textContent = m;
+    showDashboardError(m, 'Faucet tx status');
+  }
+}
+
+async function verifyFaucetTargetWallet() {
+  const line = document.getElementById('faucet-wallet-verify-line');
+  const creds = faucetWalletCreds();
+  if (!creds.walletId) {
+    const msg = 'Select a wallet in step 1 or faucet wallet dropdown first.';
+    if (line) {
+      line.textContent = msg;
+      line.classList.add('hint-error');
+    }
+    showDashboardWarning(msg, 'Faucet');
+    return;
+  }
+  if (line) {
+    line.textContent = 'Checking wallet info…';
+    line.classList.remove('hint-error');
+  }
+  try {
+    const info = await readJson('/api/relayer/wallet/info', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(creds),
+    });
+    const parsed = parseWalletInfoStdout(info?.stdout);
+    const tw = parsed?.address || '(unknown twilight address)';
+    const btc = parsed?.btcAddress || '(no BTC address shown)';
+    const sessionWallet = document.getElementById('wallet-select')?.value?.trim() || '';
+    const faucetWallet = document.getElementById('faucet-wallet-select')?.value?.trim() || '';
+    const pieces = [
+      `Wallet: ${faucetWallet || creds.walletId}`,
+      `Twilight address: ${tw}`,
+      `BTC address: ${btc}`,
+    ];
+    if (sessionWallet && faucetWallet && sessionWallet !== faucetWallet) {
+      pieces.push(`Warning: faucet wallet (${faucetWallet}) differs from step 1 wallet (${sessionWallet}).`);
+    }
+    if (lastFaucetRecipientAddress) {
+      if (tw && tw === lastFaucetRecipientAddress) {
+        pieces.push('Last faucet recipient matches this wallet.');
+      } else {
+        pieces.push(`Last faucet recipient: ${lastFaucetRecipientAddress}`);
+        pieces.push('Warning: last faucet recipient does not match this wallet.');
+      }
+    } else {
+      pieces.push('No recent faucet recipient captured yet in this browser session.');
+    }
+    if (line) {
+      line.textContent = pieces.join(' · ');
+      line.classList.remove('hint-error');
+    }
+  } catch (e) {
+    const m = errMsg(e);
+    if (line) {
+      line.textContent = m;
+      line.classList.add('hint-error');
+    }
+    showDashboardError(m, 'Faucet');
   }
 }
 
@@ -967,12 +1385,31 @@ function decodeStrategyMetaFromBtn(b64) {
   }
 }
 
+function encodeStrategyForDetails(s) {
+  try {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(s || {}))));
+  } catch {
+    return '';
+  }
+}
+
+function decodeStrategyFromDetails(b64) {
+  if (!b64 || typeof b64 !== 'string') return null;
+  try {
+    const json = decodeURIComponent(escape(atob(b64)));
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
 function strategyTemplateTotalUsd(meta) {
   if (!meta) return 0;
   return (Number(meta.twilightSize) || 0) + (Number(meta.binanceSize) || 0);
 }
 
 let realTradeModalState = null;
+let strategyDetailsModalState = null;
 
 function closeRealTradeModal() {
   const el = document.getElementById('modal-real-trade');
@@ -1010,6 +1447,54 @@ function openRealTradeModal(strategyId, meta) {
   input.select();
 }
 
+function closeStrategyDetailsModal() {
+  const el = document.getElementById('modal-strategy-details');
+  if (el) {
+    el.hidden = true;
+    el.setAttribute('aria-hidden', 'true');
+  }
+  strategyDetailsModalState = null;
+}
+
+function openStrategyDetailsModal(strategy) {
+  strategyDetailsModalState = strategy || null;
+  const overlay = document.getElementById('modal-strategy-details');
+  const name = document.getElementById('modal-strategy-details-name');
+  const tbody = document.getElementById('modal-strategy-details-table');
+  const raw = document.getElementById('modal-strategy-details-raw');
+  if (!overlay || !name || !tbody || !raw) return;
+  const s = strategy || {};
+  name.textContent = `#${s.id ?? '?'} ${s.name || 'Strategy'}`;
+  const rows = [
+    ['Category', s.category],
+    ['Risk', s.risk],
+    ['APY %', s.apy],
+    ['Daily PnL (est USD)', s.dailyPnL],
+    ['Twilight position', s.twilightPosition],
+    ['Twilight size USD', s.twilightSize],
+    ['Twilight leverage', s.twilightLeverage],
+    ['CEX position', s.binancePosition],
+    ['CEX size USD', s.binanceSize],
+    ['CEX leverage', s.binanceLeverage],
+    ['Bybit position', s.bybitPosition],
+    ['Bybit size USD', s.bybitSize],
+    ['Bybit leverage', s.bybitLeverage],
+    ['Profitable', s.profitable],
+    ['Strategy ID', s.id],
+  ];
+  tbody.innerHTML = rows
+    .map(
+      ([k, v]) =>
+        `<tr><th style="width: 40%">${escapeHtml(String(k))}</th><td>${escapeHtml(
+          v == null || v === '' ? '—' : String(v)
+        )}</td></tr>`
+    )
+    .join('');
+  raw.textContent = JSON.stringify(s, null, 2);
+  overlay.hidden = false;
+  overlay.setAttribute('aria-hidden', 'false');
+}
+
 function setRealTradePresetPercent(pct) {
   if (!realTradeModalState?.meta) return;
   const base = strategyTemplateTotalUsd(realTradeModalState.meta);
@@ -1041,6 +1526,13 @@ async function runStrategyExecute(strategyId, mode, options = {}) {
     }
     if (mode === 'real') {
       const w = walletSession();
+      if (!w.walletId || !w.password) {
+        showDashboardWarning(
+          'Real run requires wallet + encryption password in Twilight wallet (step 1). Log in first, then retry.',
+          'Real trade'
+        );
+        return;
+      }
       if (w.walletId) body.walletId = w.walletId;
       if (w.password) body.password = w.password;
     }
@@ -1234,6 +1726,7 @@ async function refreshStrategies(opts = {}) {
   const tbody = document.getElementById('strategies-body');
   const meta = document.getElementById('strategies-meta');
   try {
+    const zkos = await refreshZkosAccountAvailability();
     const data = await readJson('/api/strategies/best?limit=20&profitable=true');
     const rows = data.strategies || [];
     tbody.innerHTML = rows
@@ -1248,8 +1741,9 @@ async function refreshStrategies(opts = {}) {
         <td>${fmtUsd(s.dailyPnL)}</td>
         <td>${escapeHtml(s.twilightPosition || '')} ${s.twilightLeverage ? s.twilightLeverage + 'x' : ''}</td>
         <td class="strategy-actions">
+          <button type="button" class="btn small ghost strategy-details" data-strategy-detail="${encodeStrategyForDetails(s)}">View</button>
           <button type="button" class="btn small strategy-exec" data-sid="${s.id}" data-mode="simulation">Sim</button>
-          <button type="button" class="btn small danger strategy-exec" data-sid="${s.id}" data-mode="real" data-strategy-meta="${encodeStrategyMetaForBtn(s)}">Real</button>
+          <button type="button" class="btn small danger strategy-exec" data-sid="${s.id}" data-mode="real" data-strategy-meta="${encodeStrategyMetaForBtn(s)}" ${zkos.canRunReal ? '' : 'disabled'} title="${escapeHtml(zkos.reason || '')}">Real</button>
         </td>
       </tr>`
       )
@@ -1375,6 +1869,12 @@ document.getElementById('btn-reload-agent')?.addEventListener('click', () =>
 );
 
 document.getElementById('sec-strategies')?.addEventListener('click', (ev) => {
+  const d = ev.target.closest('.strategy-details');
+  if (d) {
+    const payload = decodeStrategyFromDetails(d.getAttribute('data-strategy-detail'));
+    if (payload) openStrategyDetailsModal(payload);
+    return;
+  }
   const b = ev.target.closest('.strategy-exec');
   if (!b) return;
   const sid = b.getAttribute('data-sid');
@@ -1382,6 +1882,10 @@ document.getElementById('sec-strategies')?.addEventListener('click', (ev) => {
   if (!sid) return;
   const idNum = Number(sid);
   if (mode === 'real') {
+    if (b.disabled) {
+      showDashboardWarning(zkosAccountAvailability.reason || 'Real mode is currently unavailable.', 'Real trade');
+      return;
+    }
     const metaB64 = b.getAttribute('data-strategy-meta');
     const meta = metaB64 ? decodeStrategyMetaFromBtn(metaB64) : null;
     if (meta) {
@@ -1444,6 +1948,16 @@ document.addEventListener('keydown', (ev) => {
   const modal = document.getElementById('modal-real-trade');
   if (ev.key !== 'Escape' || !modal || modal.hidden) return;
   closeRealTradeModal();
+});
+document.getElementById('modal-strategy-details-dismiss')?.addEventListener('click', closeStrategyDetailsModal);
+document.getElementById('modal-strategy-details-close')?.addEventListener('click', closeStrategyDetailsModal);
+document.getElementById('modal-strategy-details')?.addEventListener('click', (ev) => {
+  if (ev.target.id === 'modal-strategy-details') closeStrategyDetailsModal();
+});
+document.addEventListener('keydown', (ev) => {
+  const modal = document.getElementById('modal-strategy-details');
+  if (ev.key !== 'Escape' || !modal || modal.hidden) return;
+  closeStrategyDetailsModal();
 });
 
 document.getElementById('positions-open-body')?.addEventListener('click', async (ev) => {
@@ -1596,6 +2110,7 @@ async function refreshEnv() {
     root.innerHTML = html || '<p class="muted">No fields.</p>';
     syncConfirmRealTradingToggle(data.entries || []);
     syncZkosAllowToggle(data.entries || []);
+    syncTwilightNetworkSwitch(data.entries || []);
     syncZkosTwilightIndexField();
   } catch (e) {
     if (isLikelyNetworkFailure(e)) return;
@@ -1790,8 +2305,44 @@ document.getElementById('btn-env-example-key')?.addEventListener('click', async 
   }
 });
 
+document.getElementById('btn-apply-twilight-network')?.addEventListener('click', async () => {
+  const sel = document.getElementById('twilight-network-mode');
+  const hint = document.getElementById('twilight-network-hint');
+  const preset = sel?.value === 'mainnet' ? 'mainnet' : 'testnet';
+  try {
+    await readJson('/api/env/apply-preset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ preset, applyExampleStrategyKey: false }),
+    });
+    await refreshEnv();
+    await refreshEnvRawIfVisible();
+    await refreshWalletList();
+    await loadRelayerMetaHints();
+    await loadExchangeStatus();
+    await refreshStrategies();
+    await refreshTradeDesk();
+    if (hint) {
+      hint.textContent = `Applied ${preset} preset to .env.`;
+      hint.classList.remove('hint-error');
+    }
+    showDashboardSuccess(
+      `Twilight network switched to ${preset}. Setup sections now use ${preset} endpoints from .env.`,
+      'Twilight network switch'
+    );
+  } catch (e) {
+    const m = errMsg(e);
+    if (hint) {
+      hint.textContent = m;
+      hint.classList.add('hint-error');
+    }
+    showDashboardError(m, 'Twilight network switch');
+  }
+});
+
 async function loadExchangeStatus(opts = {}) {
   const el = document.getElementById('exchange-status');
+  const lastEl = document.getElementById('exchange-last-status');
   if (!el) return;
   try {
     const m = await readJson('/api/venue-api-keys');
@@ -1800,6 +2351,17 @@ async function loadExchangeStatus(opts = {}) {
     if (bk) bk.checked = !!m.binance?.useTestnet;
     if (bt) bt.checked = !!m.bybit?.useTestnet;
     el.textContent = `Binance: ${m.binance?.configured ? 'saved (' + (m.binance.apiKeySuffix || 'key') + ')' : 'not set'} · Bybit: ${m.bybit?.configured ? 'saved (' + (m.bybit.apiKeySuffix || 'key') + ')' : 'not set'}`;
+    if (lastEl) {
+      const b = m.binance?.lastStatus;
+      const y = m.bybit?.lastStatus;
+      const bLine = b
+        ? `Binance last check: ${b.ok ? 'OK' : 'FAIL'} @ ${fmtTime(b.checkedAt)}${b.message ? ` — ${b.message}` : ''}`
+        : 'Binance last check: not tested yet';
+      const yLine = y
+        ? `Bybit last check: ${y.ok ? 'OK' : 'FAIL'} @ ${fmtTime(y.checkedAt)}${y.message ? ` — ${y.message}` : ''}`
+        : 'Bybit last check: not tested yet';
+      lastEl.textContent = `${bLine} · ${yLine}`;
+    }
     el.classList.remove('hint-error');
   } catch (e) {
     if (!shouldSurfaceFetchError(e, opts)) return;
@@ -1807,6 +2369,33 @@ async function loadExchangeStatus(opts = {}) {
     el.textContent = m;
     el.classList.add('hint-error');
     if (opts.userAction) showDashboardError(m, 'CEX keys status');
+  }
+}
+
+async function testExchangeKey(venue) {
+  const el = document.getElementById('exchange-status');
+  if (el) el.textContent = `Testing ${venue} key…`;
+  try {
+    const r = await readJson('/api/venue-api-keys/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ venue }),
+    });
+    const msg = r?.message || `${venue} key check ${r?.ok ? 'OK' : 'failed'}.`;
+    if (r?.ok) {
+      showDashboardSuccess(msg, 'Test CEX key');
+    } else {
+      showDashboardWarning(msg, 'Test CEX key');
+    }
+    await loadExchangeStatus({ userAction: true });
+    await refreshTradeDesk({ userAction: true });
+  } catch (e) {
+    const m = errMsg(e);
+    if (el) {
+      el.textContent = m;
+      el.classList.add('hint-error');
+    }
+    showDashboardError(m, 'Test CEX key');
   }
 }
 
@@ -1833,6 +2422,42 @@ document.getElementById('wallet-select')?.addEventListener('change', (ev) => {
 });
 
 document.getElementById('wallet-pass')?.addEventListener('change', () => refreshZkosBalance());
+document.getElementById('wallet-session-mode')?.addEventListener('change', async () => {
+  const mode = walletSessionMode();
+  persistWalletSessionMode(mode);
+  const s = loadWalletSessionStorage();
+  const pw = document.getElementById('wallet-pass');
+  const ws = document.getElementById('wallet-select');
+  if (s?.password && pw && !pw.value) pw.value = s.password;
+  if (s?.walletId && ws) ws.value = s.walletId;
+  updateWalletSessionStatus();
+  await refreshZkosBalance();
+});
+document.getElementById('btn-wallet-login')?.addEventListener('click', async () => {
+  const walletId = document.getElementById('wallet-select')?.value?.trim() || '';
+  const password = document.getElementById('wallet-pass')?.value || '';
+  if (!walletId || !password) {
+    showDashboardWarning('Select wallet and enter password first.', 'Wallet list');
+    return;
+  }
+  saveWalletSessionStorage(walletId, password);
+  updateWalletSessionStatus();
+  showDashboardSuccess(`Saved wallet session for ${walletId}.`, 'Wallet list');
+  await refreshZkosBalance();
+});
+document.getElementById('btn-wallet-logout')?.addEventListener('click', async () => {
+  clearWalletSessionStorage();
+  const pw = document.getElementById('wallet-pass');
+  if (pw) pw.value = '';
+  updateWalletSessionStatus();
+  try {
+    await readJson('/api/relayer/wallet/lock', { method: 'POST' });
+  } catch {
+    /* ignore lock failure */
+  }
+  showDashboardSuccess('Logged out wallet session for this browser.', 'Wallet list');
+  await refreshZkosBalance();
+});
 
 document.getElementById('btn-wallet-refresh')?.addEventListener('click', () =>
   refreshWalletList(null, { userAction: true })
@@ -1908,6 +2533,8 @@ document.getElementById('btn-faucet-cli')?.addEventListener('click', async () =>
     showDashboardError(m, 'Faucet');
   }
 });
+document.getElementById('btn-faucet-verify-wallet')?.addEventListener('click', verifyFaucetTargetWallet);
+document.getElementById('btn-faucet-check-tx')?.addEventListener('click', checkFaucetTxStatus);
 
 document.getElementById('btn-manage-balance')?.addEventListener('click', () =>
   managePostWithCreds('/api/relayer/wallet/balance')
@@ -2038,6 +2665,12 @@ document.getElementById('btn-save-exchange')?.addEventListener('click', async ()
 
 document.getElementById('btn-reload-exchange')?.addEventListener('click', () =>
   loadExchangeStatus({ userAction: true })
+);
+document.getElementById('btn-test-binance-key')?.addEventListener('click', () =>
+  testExchangeKey('binance')
+);
+document.getElementById('btn-test-bybit-key')?.addEventListener('click', () =>
+  testExchangeKey('bybit')
 );
 
 document.getElementById('btn-strategies-refresh')?.addEventListener('click', () =>
@@ -2239,6 +2872,16 @@ document.getElementById('btn-relayer-import')?.addEventListener('click', () => {
 const tok = localStorage.getItem('dashboardToken');
 const dashTokEl = document.getElementById('dash-token');
 if (tok && dashTokEl) dashTokEl.value = tok;
+const walletSessionModeEl = document.getElementById('wallet-session-mode');
+if (walletSessionModeEl) walletSessionModeEl.value = getPersistedWalletSessionMode();
+updateWalletSessionStatus();
+const savedWalletSession = loadWalletSessionStorage();
+if (savedWalletSession?.password) {
+  const pw = document.getElementById('wallet-pass');
+  if (pw) pw.value = savedWalletSession.password;
+}
+
+initCollapsibleSections();
 
 refreshWalletList();
 loadRelayerMetaHints();

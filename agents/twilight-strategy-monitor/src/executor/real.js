@@ -100,6 +100,64 @@ function argvForLog(argv) {
   return out.join(' ');
 }
 
+/**
+ * Parse `relayer-cli wallet accounts --json` stdout into numeric ZkOS account indices.
+ * Handles plain-text "No ZkOS accounts found", JSON arrays, and common object shapes.
+ * @param {string} stdout
+ * @returns {number[]}
+ */
+function parseZkOsAccountIndicesFromAccountsStdout(stdout) {
+  const s = String(stdout || '').trim();
+  if (!s) return [];
+  if (/no zkos accounts found/i.test(s)) return [];
+
+  const collectFromObject = (row) => {
+    if (row == null || typeof row !== 'object') return null;
+    const raw =
+      row.account_index ?? row.accountIndex ?? row.index ?? row.zk_account_index;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  try {
+    const j = JSON.parse(s);
+    if (Array.isArray(j)) {
+      return j.map(collectFromObject).filter((n) => n != null);
+    }
+    if (j && typeof j === 'object') {
+      for (const key of ['accounts', 'zkosAccounts', 'zkAccounts', 'data']) {
+        const arr = j[key];
+        if (Array.isArray(arr)) {
+          return arr.map(collectFromObject).filter((n) => n != null);
+        }
+      }
+      const one = collectFromObject(j);
+      if (one != null) return [one];
+    }
+  } catch {
+    /* fall through to heuristics */
+  }
+
+  const found = new Set();
+  const re = /(?:account_index|accountIndex|index)\s*[:=]\s*(\d+)/gi;
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    const n = Number(m[1]);
+    if (Number.isFinite(n)) found.add(n);
+  }
+  // Fallback for table/plain-text rows:
+  // INDEX    BALANCE ...
+  // 0        48750   ...
+  // 1        15375   ...
+  for (const line of s.split('\n')) {
+    const row = /^\s*(\d+)\s+/.exec(line);
+    if (!row) continue;
+    const n = Number(row[1]);
+    if (Number.isFinite(n)) found.add(n);
+  }
+  return [...found].sort((a, b) => a - b);
+}
+
 function formatRelayerCliError(code, stderr, stdout) {
   const errText = String(stderr || '').trim();
   const outText = String(stdout || '').trim();
@@ -187,6 +245,35 @@ export async function executeReal({ strategy, notionals, market, logger, relayer
     if (!walletId || !password) {
       throw new Error(
         'Twilight order needs wallet id and passphrase in a non-interactive run. Fill wallet + password in Twilight wallet (step 1) when you click Real, or set NYKS_WALLET_ID and NYKS_WALLET_PASSPHRASE in the environment.'
+      );
+    }
+    const idxNum = Number(accountIndex);
+    const listArgs = [
+      'wallet',
+      'accounts',
+      '--wallet-id',
+      walletId,
+      '--password',
+      password,
+      '--json',
+    ];
+    let listed;
+    try {
+      listed = await runRelayerCli(listArgs, logger, relayerEnv, { cwd: relayerCwd });
+    } catch (e) {
+      throw new Error(
+        `[ZKOS_PREFLIGHT] Could not list ZkOS accounts before real trade: ${e?.message || String(e)}\n` +
+          'Fix: run “List ZkOS accounts” in the dashboard (step 3b) or `relayer-cli wallet accounts --wallet-id … --password … --json`, then fund if empty (`zkaccount fund`).'
+      );
+    }
+    const indices = parseZkOsAccountIndicesFromAccountsStdout(listed.stdout);
+    const want = Number.isFinite(idxNum) ? idxNum : 0;
+    if (!indices.includes(want)) {
+      const have = indices.length ? indices.join(', ') : '(none — wallet has no ZkOS accounts yet)';
+      throw new Error(
+        `[ZKOS_PREFLIGHT] Real run blocked — ZkOS account index ${want} is not available for wallet "${walletId}". ` +
+          `Known indices: ${have}.\n` +
+          '“No ZkOS accounts found” means you still need a first fund: use ZkOS (step 3b) → Fund account with spendable on-chain sats, then set TWILIGHT_ACCOUNT_INDEX to an index that exists (often 0 after first fund).'
       );
     }
     // Pass credentials on argv so relayer does not try to read a TTY (headless spawn has no /dev/tty → errno 6 on macOS).

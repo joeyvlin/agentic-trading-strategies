@@ -74,7 +74,7 @@ export const ENV_DEFS = [
     key: 'STRATEGY_API_BASE_URL',
     group: 'strategy',
     label: 'Strategy API base URL',
-    help: 'From skill: http://134.199.214.129:3000',
+    help: 'From skill: https://strategy.lunarpunk.xyz',
     type: 'text',
   },
   {
@@ -285,7 +285,7 @@ export const PRESET_MAINNET = {
   CHAIN_ID: 'nyks',
   NETWORK_TYPE: 'mainnet',
   RUST_LOG: 'info',
-  STRATEGY_API_BASE_URL: 'http://134.199.214.129:3000',
+  STRATEGY_API_BASE_URL: 'https://strategy.lunarpunk.xyz',
 };
 
 export const PRESET_TESTNET = {
@@ -297,7 +297,7 @@ export const PRESET_TESTNET = {
   CHAIN_ID: 'nyks',
   NETWORK_TYPE: 'testnet',
   RUST_LOG: 'info',
-  STRATEGY_API_BASE_URL: 'http://134.199.214.129:3000',
+  STRATEGY_API_BASE_URL: 'https://strategy.lunarpunk.xyz',
 };
 
 /** Documented example key from Twilight Strategy API skill (public sample). */

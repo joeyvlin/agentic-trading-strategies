@@ -99,22 +99,63 @@
           <code>NYKS_WALLET_PASSPHRASE</code> are set in <code>.env</code>. <strong>Create wallet</strong> still uses
           its own fields for new wallet encryption.
         </p>
-        <div class="field-grid">
-          <label class="field wide">
-            <span>Wallet for session</span>
-            <select id="wallet-select">
-              <option value="">— Load wallets —</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>Wallet encryption password</span>
-            <input type="password" id="wallet-pass" autocomplete="off" placeholder="or NYKS_WALLET_PASSPHRASE in .env" />
-          </label>
+        <div class="card-inset">
+          <h3 class="subhead">Twilight network mode</h3>
+          <p class="muted small">
+            Choose testnet or mainnet for Twilight endpoints and network type. This applies the matching preset to
+            <code>.env</code> so the wallet/faucet/ZkOS setup steps below run against the selected network.
+          </p>
+          <div class="btn-row">
+            <label class="field" style="min-width: 220px">
+              <span>Network</span>
+              <select id="twilight-network-mode">
+                <option value="testnet">testnet</option>
+                <option value="mainnet">mainnet</option>
+              </select>
+            </label>
+            <button type="button" class="btn primary" id="btn-apply-twilight-network">Apply network</button>
+          </div>
+          <p class="hint small" id="twilight-network-hint"></p>
         </div>
-        <div class="btn-row">
-          <button type="button" class="btn primary" id="btn-wallet-refresh">Refresh list</button>
+        <div class="card-inset" id="wallet-auth-logged-in" hidden>
+          <h3 class="subhead">Wallet session</h3>
+          <p class="hint" id="wallet-auth-logged-in-label"></p>
+          <div class="btn-row">
+            <button type="button" class="btn ghost" id="btn-wallet-logout">Log out</button>
+          </div>
+        </div>
+        <div id="wallet-auth-logged-out">
+          <div class="field-grid">
+            <label class="field wide">
+              <span>Wallet for session</span>
+              <select id="wallet-select">
+                <option value="">— Load wallets —</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Wallet encryption password</span>
+              <input
+                type="password"
+                id="wallet-pass"
+                autocomplete="off"
+                placeholder="or NYKS_WALLET_PASSPHRASE in .env"
+              />
+            </label>
+          </div>
+          <div class="btn-row">
+            <button type="button" class="btn primary" id="btn-wallet-refresh">Refresh list</button>
+            <label class="field" style="min-width: 230px">
+              <span>Login persistence</span>
+              <select id="wallet-session-mode">
+                <option value="session">Session-only</option>
+                <option value="remember">Remember on this device</option>
+              </select>
+            </label>
+            <button type="button" class="btn" id="btn-wallet-login">Log in</button>
+          </div>
         </div>
         <p class="hint" id="wallet-select-hint" role="status"></p>
+        <p class="hint small" id="wallet-session-status"></p>
 
         <div class="wallet-real-trading card-inset">
           <label class="inline-check wallet-real-toggle">
@@ -192,7 +233,15 @@
           <button type="button" class="btn" id="btn-faucet-cli" title="Runs relayer-cli wallet faucet — SDK get_test_tokens">
             CLI: wallet faucet (SDK)
           </button>
+          <button type="button" class="btn ghost" id="btn-faucet-verify-wallet">
+            Verify faucet target wallet
+          </button>
+          <button type="button" class="btn ghost" id="btn-faucet-check-tx">
+            Check tx status
+          </button>
         </div>
+        <p class="hint small" id="faucet-wallet-verify-line"></p>
+        <pre class="out out-compact" id="faucet-tx-status-out" hidden></pre>
         <p class="hint small" id="faucet-cli-hint">
           If NYKS/mint HTTP calls succeed but <code>SATS</code> stays <code>0</code> in <code>wallet balance</code>, use
           <strong>CLI: wallet faucet</strong>. That runs the same <code>get_test_tokens</code> path as the
@@ -322,6 +371,7 @@
           wiring.
         </p>
         <p class="hint" id="exchange-status"></p>
+        <p class="hint" id="exchange-last-status"></p>
         <div class="field-grid">
           <label class="field wide">
             <span>Binance API key</span>
@@ -350,6 +400,8 @@
         </div>
         <div class="btn-row">
           <button type="button" class="btn primary" id="btn-save-exchange">Save keys</button>
+          <button type="button" class="btn" id="btn-test-binance-key">Test Binance key</button>
+          <button type="button" class="btn" id="btn-test-bybit-key">Test Bybit key</button>
           <button type="button" class="btn ghost" id="btn-reload-exchange">Reload status</button>
         </div>
       </section>
@@ -804,6 +856,41 @@
         <div class="btn-row modal-actions">
           <button type="button" class="btn" id="modal-real-cancel">Cancel</button>
           <button type="button" class="btn primary danger" id="modal-real-run">Run real trade</button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="modal-strategy-details"
+      class="modal-overlay"
+      hidden
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-strategy-details-title"
+    >
+      <div class="modal-dialog card modal-dialog-wide">
+        <div class="modal-head">
+          <h2 id="modal-strategy-details-title" class="modal-title">Strategy details</h2>
+          <button
+            type="button"
+            class="btn ghost small modal-close"
+            id="modal-strategy-details-dismiss"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+        <p class="modal-strategy-line" id="modal-strategy-details-name"></p>
+        <div class="table-wrap">
+          <table>
+            <tbody id="modal-strategy-details-table"></tbody>
+          </table>
+        </div>
+        <h3 class="subhead">Raw strategy payload</h3>
+        <pre class="out out-compact" id="modal-strategy-details-raw"></pre>
+        <div class="btn-row modal-actions">
+          <button type="button" class="btn" id="modal-strategy-details-close">Close</button>
         </div>
       </div>
     </div>

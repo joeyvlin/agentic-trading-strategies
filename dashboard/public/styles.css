@@ -139,6 +139,14 @@ h1 {
   margin: 0;
 }
 
+.section-collapse-toggle {
+  margin-left: auto;
+}
+
+.card.section-collapsed > :not(.card-head):not(.dashboard-section-alert-host) {
+  display: none !important;
+}
+
 .muted {
   color: var(--muted);
   font-size: 0.9rem;
@@ -945,6 +953,10 @@ pre.out-compact {
   overflow: auto;
   margin: 0;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+}
+
+.modal-dialog-wide {
+  max-width: 54rem;
 }
 
 .modal-head {

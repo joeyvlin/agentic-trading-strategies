@@ -5,21 +5,31 @@ description: Provides Twilight Protocol trading context — relayer-cli (wallet,
 
 # Twilight Protocol (agentskill)
 
-Upstream source: [twilight-project/agentskill](https://github.com/twilight-project/agentskill) — sync this skill when that repo changes.
+Upstream sources:
+- Strategy API docs: [twilight-project/agentskill](https://github.com/twilight-project/agentskill)
+- Relayer CLI + onboarding docs: [twilight-project/nyks-wallet/docs](https://github.com/twilight-project/nyks-wallet/tree/main/docs)
 
 ## Which reference to read
 
 | User goal | Read |
 |-----------|------|
 | CLI trading, wallet, ZkOS, `relayer-cli` | [reference-trader.md](reference-trader.md) |
+| BTC onboarding / mainnet deposits & withdrawals | [reference-btc-onboarding.md](reference-btc-onboarding.md) |
 | Strategy API, curls, filters, categories | [reference-strategies.md](reference-strategies.md) |
+
+### Full upstream mirrors (verbatim from nyks-wallet/docs)
+
+- [reference-relayer-cli-full.md](reference-relayer-cli-full.md)
+- [reference-cli-command-rules-full.md](reference-cli-command-rules-full.md)
+- [reference-order-lifecycle-full.md](reference-order-lifecycle-full.md)
+- [reference-btc-onboarding-full.md](reference-btc-onboarding-full.md)
 
 ## Key concepts (both flows)
 
 - **Twilight**: 0% trading fees and 0% funding vs centralized venues — strategies often exploit that spread.
 - **Inverse perpetuals**: margin in BTC (sats); PnL in sats.
 - **ZkOS accounts**: Coin (idle) / Memo (order active). After a settled close, **rotate** the account before a new open (`zkaccount transfer --from <index>`), except unfilled cancelled limits.
-- **Wallet vs ZkOS**: Create/import the **NYKS wallet** first; the first **`zkaccount fund`** moves on-chain sats into a ZkOS account (no separate “create empty ZkOS” step). See [reference-trader.md](reference-trader.md) § *Wallet vs ZkOS account*.
+- **Wallet vs ZkOS**: Create/import the **NYKS wallet** first; the first **`zkaccount fund`** moves on-chain sats into a ZkOS account (no separate “create empty ZkOS” step). See [reference-trader.md](reference-trader.md).
 - **Limits**: max leverage 50x; max position ~20% of pool equity (confirm via `market market-stats` or API).
 
 ## Mainnet endpoints
@@ -30,12 +40,12 @@ Upstream source: [twilight-project/agentskill](https://github.com/twilight-proje
 | RPC | `https://rpc.twilight.org` |
 | ZkOS Server | `https://zkserver.twilight.org` |
 | Relayer API | `https://api.ephemeral.fi/api` |
-| Strategy API | `http://134.199.214.129:3000` |
+| Strategy API | `https://strategy.lunarpunk.xyz` |
 | Explorer | `https://explorer.twilight.org` |
 
 ## Strategy API (minimal)
 
-- **Base**: `http://134.199.214.129:3000`
+- **Base**: `https://strategy.lunarpunk.xyz`
 - **Auth** (except `/api/health`): header `x-api-key: 123hEll@he` or `?api_key=...`
 - **Examples**: `GET /api/market`, `GET /api/strategies?profitable=true&limit=5`, `POST /api/strategies/run`, `POST /api/impact`
 
@@ -46,4 +56,5 @@ Full endpoints, filters, and categories: [reference-strategies.md](reference-str
 - Binary: `relayer-cli` from [nyks-wallet](https://github.com/twilight-project/nyks-wallet) (build produces `target/release/relayer-cli`).
 - Typical flow: `market price` / `market market-stats` → `wallet balance` → `zkaccount fund` → `order open-trade` → `order close-trade` → `zkaccount transfer --from <index>`.
 
-Full commands, `.env` samples, and constraints: [reference-trader.md](reference-trader.md).
+Full commands, `.env` samples, and constraints: [reference-trader.md](reference-trader.md).  
+Mainnet BTC onboarding (register/deposit/withdraw): [reference-btc-onboarding.md](reference-btc-onboarding.md).
