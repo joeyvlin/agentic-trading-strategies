@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { spawn } from 'child_process';
 import ccxt from 'ccxt';
+import { resolveBinanceCredsForReal, resolveBybitCredsForReal } from '../cexFileCreds.js';
 import { cexVenue, estimateVenueNotionals } from '../normalize.js';
 
 function btcPriceFromMarket(market, venue) {
@@ -12,35 +13,37 @@ function btcPriceFromMarket(market, venue) {
 
 async function createCcxExchange(venue) {
   if (venue === 'binance') {
-    const apiKey = process.env.BINANCE_API_KEY || '';
-    const secret = process.env.BINANCE_API_SECRET || '';
-    if (!apiKey || !secret) {
-      throw new Error('BINANCE_API_KEY and BINANCE_API_SECRET are required for real Binance execution');
+    const creds = resolveBinanceCredsForReal();
+    if (!creds) {
+      throw new Error(
+        'Binance futures API key and secret are required for real execution. Set BINANCE_API_KEY / BINANCE_API_SECRET in .env, or save keys under CEX keys in the dashboard (data/exchange-keys.json).'
+      );
     }
     const ex = new ccxt.binanceusdm({
-      apiKey,
-      secret,
+      apiKey: creds.apiKey,
+      secret: creds.secret,
       enableRateLimit: true,
       options: { defaultType: 'future' },
     });
-    if (process.env.BINANCE_USE_TESTNET === '1') {
+    if (creds.useTestnet) {
       ex.setSandboxMode(true);
     }
     return ex;
   }
   if (venue === 'bybit') {
-    const apiKey = process.env.BYBIT_API_KEY || '';
-    const secret = process.env.BYBIT_API_SECRET || '';
-    if (!apiKey || !secret) {
-      throw new Error('BYBIT_API_KEY and BYBIT_API_SECRET are required for real Bybit execution');
+    const creds = resolveBybitCredsForReal();
+    if (!creds) {
+      throw new Error(
+        'Bybit API key and secret are required for real execution. Set BYBIT_API_KEY / BYBIT_API_SECRET in .env, or save keys under CEX keys in the dashboard (data/exchange-keys.json).'
+      );
     }
     const ex = new ccxt.bybit({
-      apiKey,
-      secret,
+      apiKey: creds.apiKey,
+      secret: creds.secret,
       enableRateLimit: true,
       options: { defaultType: 'swap' },
     });
-    if (process.env.BYBIT_USE_TESTNET === '1') {
+    if (creds.useTestnet) {
       ex.setSandboxMode(true);
     }
     return ex;
@@ -50,7 +53,8 @@ async function createCcxExchange(venue) {
 
 /**
  * Place a single market order on the CEX leg (Binance USDM or Bybit inverse perp).
- * Amount is derived from USD notional / price.
+ * Binance: amount is base BTC (notional USD / price). Bybit BTC/USD inverse: ccxt amount is
+ * integer contracts where 1 contract ≈ $1 USD notional (not BTC).
  */
 async function placeCexMarketOrder({ venue, positionSide, sizeUsd, market, logger }) {
   const price = btcPriceFromMarket(market, venue);
@@ -61,23 +65,49 @@ async function placeCexMarketOrder({ venue, positionSide, sizeUsd, market, logge
 
   const side =
     String(positionSide).toUpperCase() === 'LONG' ? 'buy' : 'sell';
-  const amountBtc = sizeUsd / price;
-
-  let symbol;
-  let amount = amountBtc;
-  if (venue === 'binance') {
-    symbol = 'BTC/USDT:USDT';
-    const marketInfo = ex.market(symbol);
-    amount = ex.amountToPrecision(symbol, amountBtc);
-  } else {
-    symbol = 'BTC/USD:BTC';
-    amount = ex.amountToPrecision(symbol, amountBtc);
+  const notionUsd = Number(sizeUsd);
+  if (!Number.isFinite(notionUsd) || notionUsd <= 0) {
+    throw new Error(`Invalid CEX leg notional: ${sizeUsd}`);
   }
 
-  logger.info(`[REAL] CEX ${venue} ${side} ${symbol} amount=${amount} (≈$${sizeUsd} @ $${price})`);
+  let symbol;
+  let amount;
+  let amountBtcEquiv = notionUsd / price;
+
+  if (venue === 'binance') {
+    symbol = 'BTC/USDT:USDT';
+    amount = ex.amountToPrecision(symbol, amountBtcEquiv);
+  } else {
+    symbol = 'BTC/USD:BTC';
+    const marketInfo = ex.market(symbol);
+    const minContracts = Number(marketInfo.limits?.amount?.min ?? 1);
+    // amountToPrecision on this market rounds toward zero; values < minContracts throw inside ccxt.
+    if (notionUsd < minContracts) {
+      throw new Error(
+        `[CEX_MIN_NOTIONAL] Bybit inverse leg is $${notionUsd.toFixed(2)}; minimum order size is ${minContracts} contract(s) (~$${minContracts}). ` +
+          'Increase target total notional or use a template with a larger share on the Bybit leg.'
+      );
+    }
+    amount = ex.amountToPrecision(symbol, notionUsd);
+    const n = Number(amount);
+    if (!Number.isFinite(n) || n < minContracts) {
+      throw new Error(
+        `[CEX_MIN_NOTIONAL] Bybit inverse order size ${amount} contracts is below minimum ${minContracts} (from $${notionUsd.toFixed(2)} notional). ` +
+          'Increase target total notional so the CEX leg is at least ~$1 after scaling.'
+      );
+    }
+  }
+
+  logger.info(`[REAL] CEX ${venue} ${side} ${symbol} amount=${amount} (≈$${notionUsd} @ $${price})`);
 
   const order = await ex.createOrder(symbol, 'market', side, amount);
-  return { order, symbol, price, amountBtc: Number(amount) };
+  return {
+    order,
+    symbol,
+    price,
+    amountBtc: venue === 'binance' ? Number(amount) : amountBtcEquiv,
+    ...(venue === 'bybit' ? { bybitContracts: Number(amount) } : {}),
+  };
 }
 
 function mergedRelayerEnv(relayerEnv) {
@@ -100,9 +130,31 @@ function argvForLog(argv) {
   return out.join(' ');
 }
 
+/** Best-effort: read io_type for a ZkOS account index from `wallet accounts --json` stdout (JSON shapes only). */
+function parseZkOsIoTypeForAccountIndex(stdout, index) {
+  const want = Number(index);
+  if (!Number.isFinite(want)) return null;
+  const s = String(stdout || '').trim();
+  if (!s) return null;
+  try {
+    const j = JSON.parse(s);
+    const arr = Array.isArray(j) ? j : j?.accounts || j?.zkosAccounts || j?.zkAccounts || j?.data;
+    if (!Array.isArray(arr)) return null;
+    for (const row of arr) {
+      if (row == null || typeof row !== 'object') continue;
+      const ix = Number(row.account_index ?? row.accountIndex ?? row.index);
+      if (ix !== want) continue;
+      const io = String(row.io_type ?? row.ioType ?? row.IO_TYPE ?? '').trim();
+      return io || null;
+    }
+  } catch {
+    /* table / plain text */
+  }
+  return null;
+}
+
 /**
  * Parse `relayer-cli wallet accounts --json` stdout into numeric ZkOS account indices.
- * Handles plain-text "No ZkOS accounts found", JSON arrays, and common object shapes.
  * @param {string} stdout
  * @returns {number[]}
  */
@@ -233,13 +285,23 @@ export async function executeReal({ strategy, notionals, market, logger, relayer
     String(strategy.twilightPosition).toLowerCase() !== 'null' &&
     Number(strategy.twilightSize) > 0;
 
-  const results = { tradeId: id, mode: 'real', twilight: null, cex: null, twilightSkippedReason: null };
+  const results = {
+    tradeId: id,
+    mode: 'real',
+    twilight: null,
+    cex: null,
+    twilightSkippedReason: null,
+    twilightAccountIndex: null,
+  };
 
   if (twilightLeg && shouldRunTwilightCli()) {
-    const accountIndex = process.env.TWILIGHT_ACCOUNT_INDEX || '0';
+    const env = mergedRelayerEnv(relayerEnv);
+    const accountIndex =
+      env.TWILIGHT_ACCOUNT_INDEX != null && String(env.TWILIGHT_ACCOUNT_INDEX).trim() !== ''
+        ? String(env.TWILIGHT_ACCOUNT_INDEX).trim()
+        : '0';
     const side = String(strategy.twilightPosition).toLowerCase();
     const lev = String(strategy.twilightLeverage);
-    const env = mergedRelayerEnv(relayerEnv);
     const walletId = String(env.NYKS_WALLET_ID || '').trim();
     const password = String(env.NYKS_WALLET_PASSPHRASE || '');
     if (!walletId || !password) {
@@ -276,6 +338,13 @@ export async function executeReal({ strategy, notionals, market, logger, relayer
           '“No ZkOS accounts found” means you still need a first fund: use ZkOS (step 3b) → Fund account with spendable on-chain sats, then set TWILIGHT_ACCOUNT_INDEX to an index that exists (often 0 after first fund).'
       );
     }
+    const ioType = parseZkOsIoTypeForAccountIndex(listed.stdout, want);
+    if (ioType && /^memo$/i.test(ioType)) {
+      throw new Error(
+        `[ZKOS_PREFLIGHT] ZkOS account index ${want} has io_type **Memo** (locked while an order / memo state is active). ` +
+          'Open-trade requires a **Coin** (idle) account. Pick a Coin row in the dashboard ZkOS list, run a real trade again (the UI index is sent with the request), or rotate with `zkaccount transfer` after a settled close.'
+      );
+    }
     // Pass credentials on argv so relayer does not try to read a TTY (headless spawn has no /dev/tty → errno 6 on macOS).
     // Omit --no-wait: some relayer-cli builds do not support it.
     const args = [
@@ -299,6 +368,7 @@ export async function executeReal({ strategy, notionals, market, logger, relayer
     results.twilight = await runRelayerCli(args, logger, relayerEnv, {
       cwd: relayerCwd,
     });
+    results.twilightAccountIndex = Number(accountIndex);
   } else if (twilightLeg) {
     const reason = twilightCliExplicitlyDisabled()
       ? 'Twilight leg skipped (ALLOW_TWILIGHT_CLI_EXECUTION=0).'

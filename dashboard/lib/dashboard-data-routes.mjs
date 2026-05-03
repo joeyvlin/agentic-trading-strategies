@@ -5,11 +5,6 @@ import {
   saveExchangeKeys,
   updateExchangeKeyLastStatus,
 } from './exchange-keys-store.mjs';
-import {
-  appendTradeEntry,
-  deleteTradeEntry,
-  getTradeJournal,
-} from './trade-journal-store.mjs';
 import { getStrategyApiEnv } from './env-store.mjs';
 
 /**
@@ -94,10 +89,6 @@ export function registerDashboardDataRoutes(app, { requireToken }) {
   app.get('/api/exchange-keys', requireToken, getExchangeKeys);
   app.put('/api/exchange-keys', requireToken, putExchangeKeys);
 
-  app.get('/api/trade-journal', requireToken, (_req, res) => {
-    res.json(getTradeJournal());
-  });
-
   app.post('/api/tx-status', requireToken, async (req, res) => {
     const txHash = String(req.body?.txHash || req.body?.tx_hash || '').trim();
     if (!txHash) return res.status(400).json({ error: 'txHash is required' });
@@ -135,21 +126,6 @@ export function registerDashboardDataRoutes(app, { requireToken }) {
         request: { method: 'GET', url },
       });
     }
-  });
-
-  app.post('/api/trade-journal', requireToken, (req, res) => {
-    try {
-      const entry = appendTradeEntry(req.body || {});
-      res.json({ ok: true, entry });
-    } catch (e) {
-      res.status(500).json({ error: e.message || String(e) });
-    }
-  });
-
-  app.delete('/api/trade-journal/:id', requireToken, (req, res) => {
-    const ok = deleteTradeEntry(req.params.id);
-    if (!ok) return res.status(404).json({ error: 'Entry not found' });
-    res.json({ ok: true });
   });
 
   app.get('/api/strategies/best', requireToken, async (req, res) => {

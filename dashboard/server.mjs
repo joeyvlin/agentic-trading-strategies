@@ -8,7 +8,8 @@ import { registerAgentSettingsRoutes } from './lib/agent-settings-routes.mjs';
 import { createMonitorService } from './lib/monitor-service.mjs';
 import { registerDashboardDataRoutes } from './lib/dashboard-data-routes.mjs';
 import { registerEnvRoutes } from './lib/env-routes.mjs';
-import { getPositionPnlSummary, closePosition } from './lib/position-ledger.mjs';
+import { getPositionPnlSummary } from './lib/position-ledger.mjs';
+import { executeFullPositionClose } from './lib/position-close-service.mjs';
 import { getTradeDeskSnapshot } from './lib/trade-desk.mjs';
 import { registerRelayerRoutes } from './lib/relayer-routes.mjs';
 import { sanitizeString } from './lib/relayer-cli.mjs';
@@ -95,14 +96,33 @@ app.get('/api/pnl', requireToken, async (_req, res) => {
   }
 });
 
-app.post('/api/positions/:tradeId/close', requireToken, (req, res) => {
-  const v = req.body?.realizedPnlUsd;
-  if (v === undefined || v === null || Number.isNaN(Number(v))) {
-    return res.status(400).json({ error: 'Body must include realizedPnlUsd (number)' });
+app.post('/api/positions/:tradeId/close', requireToken, async (req, res) => {
+  const raw = req.body?.realizedPnlUsd;
+  const empty =
+    raw === undefined ||
+    raw === null ||
+    (typeof raw === 'string' && String(raw).trim() === '');
+  let optRealized = null;
+  if (!empty) {
+    const v = Number(raw);
+    if (!Number.isFinite(v)) {
+      return res.status(400).json({ error: 'realizedPnlUsd must be a number when provided' });
+    }
+    optRealized = v;
   }
-  const out = closePosition(req.params.tradeId, Number(v));
-  if (!out.ok) return res.status(404).json(out);
-  res.json({ ok: true });
+  const wid = sanitizeString(req.body?.walletId ?? req.body?.wallet_id ?? '');
+  const pw = typeof req.body?.password === 'string' ? req.body.password : '';
+  try {
+    const out = await executeFullPositionClose(req.params.tradeId, {
+      realizedPnlUsd: optRealized,
+      walletId: wid,
+      password: pw,
+    });
+    if (!out.ok) return res.status(404).json(out);
+    res.json({ ok: true, realizedPnlUsd: out.realizedPnlUsd, venueSteps: out.venueSteps, mode: out.mode });
+  } catch (e) {
+    return res.status(500).json({ error: e.message || String(e) });
+  }
 });
 
 app.post('/api/monitor/run-strategy', requireToken, async (req, res) => {
@@ -126,6 +146,11 @@ app.post('/api/monitor/run-strategy', requireToken, async (req, res) => {
     const pw = typeof req.body?.password === 'string' ? req.body.password : '';
     if (wid) relayerEnv.NYKS_WALLET_ID = wid;
     if (pw) relayerEnv.NYKS_WALLET_PASSPHRASE = pw;
+    const rawTwIdx = req.body?.twilightAccountIndex ?? req.body?.TWILIGHT_ACCOUNT_INDEX;
+    if (rawTwIdx != null && rawTwIdx !== '') {
+      const s = String(rawTwIdx).trim();
+      if (s && /^-?\d+$/.test(s)) relayerEnv.TWILIGHT_ACCOUNT_INDEX = s;
+    }
     const runOpts =
       targetTotalNotionalUsd !== undefined || Object.keys(relayerEnv).length
         ? {
@@ -150,7 +175,21 @@ app.post('/api/monitor/run-strategy', requireToken, async (req, res) => {
         error: msg,
         code: 'ZKOS_ACCOUNT_REQUIRED',
         hint:
-          'Fund a ZkOS account (step 3b) if the list is empty, then save TWILIGHT_ACCOUNT_INDEX for an index that exists.',
+          'ZkOS preflight failed: fund/list accounts (step 3b), use a **Coin** (idle) index for opens, or fix the index. If the message mentions Memo, the chosen index is order-locked — pick another Coin row or rotate after close.',
+      });
+    }
+    if (/Account is locked.*Memo|io type:\s*Memo/i.test(msg)) {
+      return res.status(409).json({
+        error: msg,
+        code: 'ZKOS_MEMO_LOCKED',
+        hint:
+          'That ZkOS index is Memo (locked for new opens). In ZkOS step, list accounts, select a row with io_type Coin, then run again — the dashboard sends the index in the field with each real run. Saving .env is optional for defaults.',
+      });
+    }
+    if (/\[CEX_MIN_NOTIONAL\]/i.test(msg)) {
+      return res.status(400).json({
+        error: msg.replace(/^\[CEX_MIN_NOTIONAL\]\s*/i, ''),
+        code: 'CEX_MIN_NOTIONAL',
       });
     }
     res.status(500).json({ error: msg });

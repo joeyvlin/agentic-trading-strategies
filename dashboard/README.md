@@ -56,7 +56,7 @@ The **Twilight relayer** card runs [nyks-wallet](https://github.com/twilight-pro
 |-----|---------|
 | `TWILIGHT_RELAYER_CLI` | Path to binary (default: `relayer-cli` on `PATH`) |
 | `NYKS_WALLET_ID` / `NYKS_WALLET_PASSPHRASE` | Optional defaults so you need not type them in the browser |
-| `RELAYER_ALLOW_DASHBOARD_ZK` | Must be `YES` to enable **ZkOS fund** and **zkaccount transfer** from the API/UI |
+| `RELAYER_ALLOW_DASHBOARD_ZK` | Must be `YES` to enable **ZkOS fund**, **`zkaccount withdraw`**, and **`zkaccount transfer`** from the API/UI |
 | `RELAYER_ALLOW_DASHBOARD_ORDERS` | Must be `YES` to enable **order** open/close/cancel from the API/UI |
 
 **Signing:** There is no separate “sign raw tx” endpoint — the CLI signs when executing wallet/order flows. Use **Unlock** / session or env passphrases as in the [agentskill trader reference](https://github.com/twilight-project/agentskill).

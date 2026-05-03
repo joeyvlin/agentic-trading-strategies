@@ -29,8 +29,13 @@ function buildExecutionSummary(trade) {
     cex: null,
   };
   if (raw?.twilight) {
+    const acct =
+      raw.twilightAccountIndex != null && raw.twilightAccountIndex !== ''
+        ? Number(raw.twilightAccountIndex)
+        : Number(process.env.TWILIGHT_ACCOUNT_INDEX ?? 0) || 0;
     summary.twilight = {
       completed: true,
+      accountIndex: Number.isFinite(acct) ? acct : 0,
       stdoutPreview: String(raw.twilight.stdout || '').slice(0, 2500),
       stderrPreview: String(raw.twilight.stderr || '').slice(0, 1000),
     };
@@ -50,6 +55,9 @@ function buildExecutionSummary(trade) {
   if (raw?.cex?.order) {
     const venue = cexVenue(strategy) || 'cex';
     const o = raw.cex.order;
+    const openSide = String(o.side || '').toLowerCase();
+    const filledAmt = Number(o.filled) || Number(o.amount) || 0;
+    const flattenSide = openSide === 'buy' ? 'sell' : 'buy';
     summary.cex = {
       completed: true,
       venue,
@@ -60,6 +68,8 @@ function buildExecutionSummary(trade) {
       price: o.average ?? o.price,
       amount: o.amount,
       filled: o.filled,
+      flattenSide,
+      flattenAmount: filledAmt,
     };
   } else if (strategy && cexVenue(strategy)) {
     summary.cex = {

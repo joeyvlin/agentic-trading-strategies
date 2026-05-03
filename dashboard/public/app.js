@@ -2,6 +2,10 @@ const WALLET_STORAGE_KEY = 'selectedTwilightWalletId';
 const WALLET_SESSION_STORAGE_KEY = 'twilightWalletSessionV1';
 const WALLET_SESSION_MODE_STORAGE_KEY = 'twilightWalletSessionModeV1';
 const SECTION_COLLAPSE_STORAGE_KEY = 'dashboardCollapsedSectionsV1';
+const STRATEGIES_CEX_FILTER_STORAGE_KEY = 'strategiesCexFilterV1';
+
+/** Last successful `/api/strategies/best` payload; CEX checkboxes filter client-side without refetch. */
+let strategiesListCache = null;
 
 /** Set by /api/relayer/wallet/balance-sats for ZkOS fund slider. */
 let zkosSpendableSats = null;
@@ -21,6 +25,9 @@ let zkosAccountAvailability = {
   reason: 'Checking ZkOS accounts…',
 };
 
+/** Rows from last `wallet accounts` (table or JSON); drives ZkOS account dropdown. */
+let zkosAccountsListCache = [];
+
 const api = (path, opts = {}) => {
   const headers = { ...opts.headers };
   const token = localStorage.getItem('dashboardToken');
@@ -31,6 +38,25 @@ const api = (path, opts = {}) => {
 function errMsg(e) {
   if (e && typeof e.message === 'string' && e.message) return e.message;
   return String(e);
+}
+
+/**
+ * Relayer envelopes `{ ok, code, stdout, stderr, … }` often have wide, multi-line `stdout` (ASCII tables).
+ * `JSON.stringify` puts that in a single JSON string line, which does not wrap well in a narrow preview
+ * / iframe — the middle looks missing. Show JSON without those fields, then raw blocks.
+ * @param {unknown} r
+ */
+function formatRelayerEnvelopeForPre(r) {
+  if (r == null || typeof r !== 'object') return JSON.stringify(r, null, 2);
+  const hasStdout = Object.prototype.hasOwnProperty.call(r, 'stdout');
+  const hasStderr = Object.prototype.hasOwnProperty.call(r, 'stderr');
+  if (!hasStdout && !hasStderr) return JSON.stringify(r, null, 2);
+  const meta = { ...r };
+  const stdout = meta.stdout;
+  const stderr = meta.stderr;
+  delete meta.stdout;
+  delete meta.stderr;
+  return `${JSON.stringify(meta, null, 2)}\n\n──────── stdout ────────\n${String(stdout ?? '')}\n\n──────── stderr ────────\n${String(stderr ?? '')}`;
 }
 
 /** Fetch failed before a normal HTTP response (offline, DNS, blocked, etc.). */
@@ -69,7 +95,6 @@ const SECTION_BY_CONTEXT = {
   'Load config': 'sec-advanced',
   'Trade desk': 'sec-trade-desk',
   'Best trades': 'sec-strategies',
-  'Journal': 'sec-journal',
   'Agent settings': 'sec-agent',
   'Save agent settings': 'sec-agent',
   'Close position': 'sec-agent-pnl',
@@ -85,8 +110,6 @@ const SECTION_BY_CONTEXT = {
   'Faucet tx status': 'sec-faucet',
   'Create wallet': 'sec-wallet',
   'Save CEX keys': 'sec-keys',
-  'Add journal entry': 'sec-journal',
-  'Remove journal entry': 'sec-journal',
   'Start monitor': 'sec-agent',
   'Stop monitor': 'sec-agent',
   'Simulation run': 'sec-advanced',
@@ -498,16 +521,224 @@ function faucetWalletCreds() {
   return credsFromPanel('faucet-wallet-select');
 }
 
+/**
+ * Parse `relayer-cli wallet accounts` stdout (human table or `--json`) into rows for UI.
+ * Table columns: INDEX, BALANCE, ON-CHAIN, IO-TYPE, TX-TYPE, ACCOUNT (see nyks-wallet docs).
+ * @returns {Array<{ index: number, balance: string, onChain: string, ioType: string, txType: string, accountId: string, raw?: object|null }>}
+ */
+function parseZkOsAccountDetailsFromStdout(stdout) {
+  const s = String(stdout || '').trim();
+  if (!s || /No ZkOS accounts found/i.test(s)) return [];
+  try {
+    const j = JSON.parse(s);
+    const arr = Array.isArray(j) ? j : j?.accounts || j?.zkosAccounts || j?.zkAccounts || j?.data;
+    if (Array.isArray(arr) && arr.length) {
+      const out = [];
+      for (const row of arr) {
+        if (row == null || typeof row !== 'object') continue;
+        const index = Number(row.account_index ?? row.accountIndex ?? row.index);
+        if (!Number.isFinite(index)) continue;
+        const balance = row.balance ?? row.BALANCE ?? row.balance_sats ?? '';
+        const accountId = String(
+          row.account ?? row.account_id ?? row.accountAddress ?? row.address ?? ''
+        ).trim();
+        const ioType = String(row.io_type ?? row.ioType ?? row.IO_TYPE ?? '').trim();
+        const txType = String(row.tx_type ?? row.txType ?? row.TX_TYPE ?? '').trim();
+        let raw = null;
+        try {
+          raw = JSON.parse(JSON.stringify(row));
+        } catch {
+          raw = null;
+        }
+        out.push({
+          index,
+          balance: String(balance ?? ''),
+          onChain: String(row.on_chain ?? row.onChain ?? ''),
+          ioType,
+          txType,
+          accountId,
+          raw,
+        });
+      }
+      return out.sort((a, b) => a.index - b.index);
+    }
+  } catch {
+    /* table / plain text */
+  }
+  const out = [];
+  for (const line of s.split('\n')) {
+    const t = line.trim();
+    if (!/^\d+\s+/.test(t)) continue;
+    if (/^INDEX\b/i.test(t)) continue;
+    const parts = t.split(/\s+/);
+    if (parts.length < 2) continue;
+    const index = Number(parts[0]);
+    if (!Number.isFinite(index)) continue;
+    const balance = parts[1];
+    let onChain = '';
+    let ioType = '';
+    let txType = '';
+    let accountId = '';
+    if (parts.length >= 6) {
+      onChain = parts[2] || '';
+      ioType = parts[3] || '';
+      txType = parts[4] || '';
+      accountId = parts.slice(5).join(' ') || '';
+    } else if (parts.length === 5) {
+      onChain = parts[2] || '';
+      ioType = parts[3] || '';
+      accountId = parts[4] || '';
+    } else {
+      onChain = parts[2] || '';
+      accountId = parts.length > 3 ? parts.slice(2).join(' ') : '';
+    }
+    out.push({
+      index,
+      balance,
+      onChain,
+      ioType,
+      txType,
+      accountId,
+      raw: null,
+    });
+  }
+  return out.sort((a, b) => a.index - b.index);
+}
+
 function parseAccountRowsFromStdout(stdout) {
-  const s = String(stdout || '');
-  if (!s.trim()) return 0;
-  if (/No ZkOS accounts found/i.test(s)) return 0;
-  const lines = s
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean);
-  const rows = lines.filter((l) => /^\d+\s+/.test(l));
-  return rows.length;
+  return parseZkOsAccountDetailsFromStdout(stdout).length;
+}
+
+function envFlagYes(key) {
+  const rows = window.__envRows || [];
+  const row = rows.find((r) => r.key === key);
+  if (!row?.hasValue) return false;
+  return String(row.value || '').trim().toUpperCase() === 'YES';
+}
+
+/** Row for the account selected in ZkOS dropdown; synthetic if index not in last list cache. */
+function getSelectedZkOsRow() {
+  const sel = document.getElementById('zkos-active-account-select');
+  const v = sel?.value?.trim();
+  if (!v) return null;
+  const idx = Number(v);
+  if (!Number.isFinite(idx)) return null;
+  const rows = Array.isArray(zkosAccountsListCache) ? zkosAccountsListCache : [];
+  const found = rows.find((r) => r.index === idx);
+  if (found) return found;
+  return {
+    index: idx,
+    balance: '',
+    onChain: '',
+    ioType: '',
+    txType: '',
+    accountId: '',
+    raw: null,
+    _synthetic: true,
+  };
+}
+
+function syncZkosInspectorGateHint() {
+  const el = document.getElementById('zkos-inspector-gates');
+  if (!el) return;
+  const zk = envFlagYes('RELAYER_ALLOW_DASHBOARD_ZK');
+  const ord = envFlagYes('RELAYER_ALLOW_DASHBOARD_ORDERS');
+  el.textContent = `Relayer gates (.env): ZkOS ${zk ? 'YES' : 'NO'} · Orders ${ord ? 'YES' : 'NO'}`;
+}
+
+function syncZkosInspector() {
+  syncZkosInspectorGateHint();
+  const emptyEl = document.getElementById('zkos-inspector-empty');
+  const bodyEl = document.getElementById('zkos-inspector-body');
+  const fieldsEl = document.getElementById('zkos-inspector-fields');
+  const rawEl = document.getElementById('zkos-inspector-raw');
+  const rawTgl = document.getElementById('zkos-inspector-raw-toggle');
+  const sel = document.getElementById('zkos-active-account-select');
+  const hasPick = sel && sel.value !== '' && sel.value != null;
+  const row = hasPick ? getSelectedZkOsRow() : null;
+  const actionBtns = document.querySelectorAll('#zkos-inspector-actions button');
+
+  if (!hasPick || !row) {
+    if (emptyEl) emptyEl.hidden = false;
+    if (bodyEl) bodyEl.hidden = true;
+    if (fieldsEl) fieldsEl.innerHTML = '';
+    if (rawTgl) rawTgl.checked = false;
+    if (rawEl) {
+      rawEl.textContent = '';
+      rawEl.hidden = true;
+    }
+    actionBtns.forEach((b) => {
+      b.disabled = true;
+    });
+    const fillWd = document.getElementById('btn-zkos-insp-withdraw-fill');
+    if (fillWd) fillWd.disabled = true;
+    return;
+  }
+
+  if (emptyEl) emptyEl.hidden = true;
+  if (bodyEl) bodyEl.hidden = false;
+  actionBtns.forEach((b) => {
+    b.disabled = false;
+  });
+  const fillWd = document.getElementById('btn-zkos-insp-withdraw-fill');
+  if (fillWd) fillWd.disabled = false;
+
+  const synth = !!row._synthetic;
+  if (fieldsEl) {
+    if (synth) {
+      fieldsEl.innerHTML = `<tbody><tr><td colspan="2" class="hint">${escapeHtml(
+        `Index ${row.index} is not in the last list output — run List ZkOS accounts for full fields. Actions still use this index.`
+      )}</td></tr></tbody>`;
+    } else {
+      const known = new Set([
+        'account_index',
+        'accountIndex',
+        'index',
+        'balance',
+        'BALANCE',
+        'balance_sats',
+        'account',
+        'account_id',
+        'accountAddress',
+        'address',
+        'on_chain',
+        'onChain',
+        'io_type',
+        'ioType',
+        'IO_TYPE',
+        'tx_type',
+        'txType',
+        'TX_TYPE',
+      ]);
+      const rowsHtml = [
+        ['Index', String(row.index)],
+        ['Balance (parsed)', row.balance || '—'],
+        ['On-chain', row.onChain || '—'],
+        ['io_type', row.ioType || '—'],
+        ['tx_type', row.txType || '—'],
+        ['Account id / address', row.accountId || '—'],
+      ];
+      if (row.raw && typeof row.raw === 'object') {
+        for (const k of Object.keys(row.raw).sort()) {
+          if (known.has(k)) continue;
+          const v = row.raw[k];
+          const cell = v == null ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v);
+          rowsHtml.push([k, cell]);
+        }
+      }
+      fieldsEl.innerHTML = `<tbody>${rowsHtml
+        .map(([k, v]) => `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(v)}</td></tr>`)
+        .join('')}</tbody>`;
+    }
+  }
+
+  if (rawTgl) rawTgl.checked = false;
+  if (rawEl) {
+    rawEl.textContent = row.raw
+      ? JSON.stringify(row.raw, null, 2)
+      : '(No raw JSON — list output was table/text, or synthetic row.)';
+    rawEl.hidden = true;
+  }
 }
 
 async function refreshZkosAccountAvailability() {
@@ -527,7 +758,13 @@ async function refreshZkosAccountAvailability() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(creds),
     });
-    const count = parseAccountRowsFromStdout(r?.stdout || '');
+    const rows = parseZkOsAccountDetailsFromStdout(r?.stdout || '');
+    if (r?.ok) {
+      zkosAccountsListCache = rows;
+      rebuildZkosActiveAccountDropdown();
+      updateZkosTradeAccountBanner();
+    }
+    const count = rows.length;
     zkosAccountAvailability = {
       checked: true,
       canRunReal: count > 0,
@@ -606,8 +843,8 @@ function syncZkosAllowToggle(entries) {
   chk.checked = !!on;
   if (hint) {
     hint.textContent = on
-      ? 'ZkOS fund and rotate are allowed for this server process.'
-      : 'Enable to write RELAYER_ALLOW_DASHBOARD_ZK=YES to .env (required for fund / rotate).';
+      ? 'ZkOS fund, withdraw, and rotate are allowed for this server process.'
+      : 'Enable to write RELAYER_ALLOW_DASHBOARD_ZK=YES to .env (required for fund / withdraw / rotate).';
   }
 }
 
@@ -960,6 +1197,187 @@ function zkosAppendInsufficientHint(text, r) {
   );
 }
 
+function getTwilightAccountIndexFromEnvForm() {
+  return document.getElementById('env-TWILIGHT_ACCOUNT_INDEX')?.value?.trim() ?? '';
+}
+
+/** Index sent with each real strategy run: UI field first, then saved .env form, then 0. */
+function getTwilightAccountIndexForStrategyRun() {
+  const pend = document.getElementById('zkos-strategy-index')?.value?.trim() ?? '';
+  if (pend !== '' && /^-?\d+$/.test(pend)) return pend;
+  const saved = getTwilightAccountIndexFromEnvForm().trim();
+  if (saved !== '' && /^-?\d+$/.test(saved)) return saved;
+  return '0';
+}
+
+/** Best-effort sats from a `wallet accounts` row (for transfer slider max). */
+function parseZkOsRowBalanceSats(row) {
+  if (!row || typeof row !== 'object') return 0;
+  const raw = String(row.balance ?? '').trim();
+  if (!raw) return 0;
+  const n = Number(raw.replace(/,/g, ''));
+  if (Number.isFinite(n) && n >= 0) return Math.floor(n);
+  const digits = raw.replace(/[^\d]/g, '');
+  if (digits) {
+    const m = Number(digits);
+    if (Number.isFinite(m) && m >= 0) return Math.floor(m);
+  }
+  return 0;
+}
+
+function zkosTransferAmountForPct(maxSats, pctRaw) {
+  const p = Math.min(100, Math.max(0, Number(pctRaw) || 0));
+  if (!Number.isFinite(maxSats) || maxSats <= 0) return 0;
+  if (p >= 100) return maxSats;
+  return Math.floor((maxSats * p) / 100);
+}
+
+function syncZkosTransferSliderState() {
+  const sel = document.getElementById('zkos-transfer-from');
+  const pct = document.getElementById('zkos-transfer-pct');
+  const readout = document.getElementById('zkos-transfer-amount-readout');
+  if (!sel || !pct || !readout) return;
+  const opt = sel.selectedOptions[0];
+  const maxSats = Number(opt?.dataset?.maxSats ?? 0);
+  const pctNum = Math.min(100, Math.max(0, Number(pct.value) || 0));
+  pct.value = String(pctNum);
+  const ok = Number.isFinite(maxSats) && maxSats > 0 && sel.value !== '';
+  pct.disabled = !ok;
+  if (!ok) {
+    readout.textContent = '0 / 0 sats';
+    return;
+  }
+  const amt = zkosTransferAmountForPct(maxSats, pctNum);
+  readout.textContent =
+    pctNum >= 100
+      ? `${amt.toLocaleString()} sats (full account)`
+      : `${amt.toLocaleString()} / ${maxSats.toLocaleString()} sats (${pctNum}% · split)`;
+}
+
+function rebuildZkosTransferFromSelect() {
+  const sel = document.getElementById('zkos-transfer-from');
+  if (!sel) return;
+  const prev = sel.value;
+  const rows = Array.isArray(zkosAccountsListCache)
+    ? zkosAccountsListCache.slice().sort((a, b) => a.index - b.index)
+    : [];
+  sel.innerHTML = '';
+  const ph = document.createElement('option');
+  ph.value = '';
+  ph.dataset.maxSats = '0';
+  ph.textContent = rows.length ? '— Choose source account —' : '— List ZkOS accounts first —';
+  sel.appendChild(ph);
+  for (const r of rows) {
+    const o = document.createElement('option');
+    o.value = String(r.index);
+    const maxSats = parseZkOsRowBalanceSats(r);
+    o.dataset.maxSats = String(maxSats);
+    const io = r.ioType ? String(r.ioType) : '—';
+    const tx = r.txType && String(r.txType) !== '-' ? String(r.txType) : '—';
+    o.textContent = `Index ${r.index} · ~${maxSats.toLocaleString()} sats · ${io}/${tx}`;
+    sel.appendChild(o);
+  }
+  const hasPrev = prev !== '' && [...sel.options].some((x) => x.value === prev);
+  sel.value = hasPrev ? prev : '';
+  syncZkosTransferSliderState();
+}
+
+function rebuildZkosActiveAccountDropdown() {
+  const sel = document.getElementById('zkos-active-account-select');
+  const idxInput = document.getElementById('zkos-strategy-index');
+  if (!sel || !idxInput) return;
+  let current = String(idxInput.value ?? '').trim();
+  if (current === '' || current === 'NaN' || !/^-?\d+$/.test(current)) current = '0';
+  idxInput.value = current;
+
+  const rows = Array.isArray(zkosAccountsListCache)
+    ? zkosAccountsListCache.slice().sort((a, b) => a.index - b.index)
+    : [];
+
+  sel.innerHTML = '';
+  const ph = document.createElement('option');
+  ph.value = '';
+  ph.textContent = rows.length ? '— Choose account —' : '— List ZkOS accounts (button below) —';
+  sel.appendChild(ph);
+
+  for (const r of rows) {
+    const o = document.createElement('option');
+    o.value = String(r.index);
+    const bal = r.balance != null && r.balance !== '' ? String(r.balance) : '—';
+    const io = r.ioType ? String(r.ioType) : '—';
+    const tx = r.txType && String(r.txType) !== '-' ? String(r.txType) : '—';
+    const tail =
+      r.accountId && String(r.accountId).length > 10
+        ? `…${String(r.accountId).slice(-8)}`
+        : r.accountId || '—';
+    o.textContent = `Index ${r.index} · ${bal} sats · ${io}/${tx} · ${tail}`;
+    sel.appendChild(o);
+  }
+
+  const inRows = rows.some((r) => String(r.index) === current);
+  if (!inRows && current !== '') {
+    const o = document.createElement('option');
+    o.value = current;
+    o.textContent = `Index ${current} (.env / manual — not in last list)`;
+    sel.appendChild(o);
+  }
+
+  const hasOpt = [...sel.options].some((o) => o.value === current);
+  sel.value = hasOpt ? current : '';
+  rebuildZkosTransferFromSelect();
+  syncZkosInspector();
+}
+
+function updateZkosTradeAccountBanner() {
+  const line = document.getElementById('zkos-trade-account-line');
+  const sub = document.getElementById('zkos-trade-account-sub');
+  if (!line) return;
+  const savedRaw = getTwilightAccountIndexFromEnvForm();
+  const savedNorm = savedRaw === '' ? '0' : savedRaw;
+  const runNorm = getTwilightAccountIndexForStrategyRun();
+  line.innerHTML = `Real strategy runs use ZkOS index <strong>${escapeHtml(runNorm)}</strong> (field below, then .env). Saved <code>TWILIGHT_ACCOUNT_INDEX</code>: <strong>${escapeHtml(savedNorm)}</strong>.`;
+  if (sub) {
+    const mismatch = String(runNorm) !== String(savedNorm);
+    sub.textContent = mismatch
+      ? `Runs use ${runNorm} while .env has ${savedNorm}. Click Save default index to persist the field into .env.`
+      : 'Fund moves on-chain sats into ZkOS; Transfer below rotates balance into new account(s). Use a **Coin** row for new opens; **Memo** means that index is locked until the order path settles or you rotate.';
+    sub.classList.toggle('hint-error', mismatch);
+  }
+}
+
+async function runZkosListAccounts(opts = {}) {
+  const out = document.getElementById('zkos-out');
+  const creds = walletSession();
+  if (!creds.walletId) {
+    showDashboardWarning('Select a wallet in Twilight wallet (step 1).', 'ZkOS');
+    return;
+  }
+  if (!creds.password) {
+    showDashboardWarning('Enter wallet password or log in (step 1).', 'ZkOS');
+    return;
+  }
+  if (out) out.textContent = 'Running…';
+  try {
+    const r = await readJson('/api/relayer/wallet/accounts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(creds),
+    });
+    if (r?.ok) {
+      zkosAccountsListCache = parseZkOsAccountDetailsFromStdout(r.stdout || '');
+      rebuildZkosActiveAccountDropdown();
+      updateZkosTradeAccountBanner();
+    }
+    let text = formatRelayerEnvelopeForPre(r);
+    if (r && r.ok === false) text = zkosAppendInsufficientHint(text, r);
+    if (out && (!opts.silentOut || r.ok === false)) out.textContent = text;
+  } catch (e) {
+    const m = errMsg(e);
+    if (out) out.textContent = m;
+    if (opts.userAction) showDashboardError(m, 'ZkOS');
+  }
+}
+
 async function zkosPost(path, body) {
   const out = document.getElementById('zkos-out');
   if (!out) return;
@@ -970,7 +1388,7 @@ async function zkosPost(path, body) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body || {}),
     });
-    let text = JSON.stringify(r, null, 2);
+    let text = formatRelayerEnvelopeForPre(r);
     if (r && r.ok === false) text = zkosAppendInsufficientHint(text, r);
     out.textContent = text;
   } catch (e) {
@@ -987,6 +1405,27 @@ function zkosPostWithCreds(path, extra = {}) {
     return;
   }
   zkosPost(path, { ...creds, ...extra });
+}
+
+/** Inspector / one-off: POST relayer route and write combined output to #zkos-out. */
+async function runZkosInspectorRelayerToOut(label, path, body) {
+  const out = document.getElementById('zkos-out');
+  if (out) out.textContent = `Running (${label})…`;
+  try {
+    const r = await readJson(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    });
+    let text = formatRelayerEnvelopeForPre(r);
+    if (r && r.ok === false) text = zkosAppendInsufficientHint(text, r);
+    if (out) out.textContent = text;
+    if (r?.ok) showDashboardSuccess(`${label} finished.`, 'ZkOS');
+  } catch (e) {
+    const m = errMsg(e);
+    if (out) out.textContent = m;
+    showDashboardError(m, 'ZkOS');
+  }
 }
 
 /**
@@ -1119,7 +1558,7 @@ async function managePost(path, body) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body || {}),
     });
-    out.textContent = JSON.stringify(r, null, 2);
+    out.textContent = formatRelayerEnvelopeForPre(r);
   } catch (e) {
     const m = errMsg(e);
     out.textContent = m;
@@ -1167,8 +1606,8 @@ document.getElementById('chk-allow-dashboard-zk')?.addEventListener('change', as
     });
     showDashboardSuccess(
       on
-        ? 'Saved RELAYER_ALLOW_DASHBOARD_ZK=YES — ZkOS fund/transfer enabled for this process.'
-        : 'Removed RELAYER_ALLOW_DASHBOARD_ZK — ZkOS fund/transfer disabled.',
+        ? 'Saved RELAYER_ALLOW_DASHBOARD_ZK=YES — ZkOS fund/withdraw/transfer enabled for this process.'
+        : 'Removed RELAYER_ALLOW_DASHBOARD_ZK — ZkOS fund/withdraw/transfer disabled.',
       'ZkOS allow'
     );
     await refreshEnv();
@@ -1189,7 +1628,7 @@ async function relayerPost(path, body) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body || {}),
     });
-    out.textContent = JSON.stringify(r, null, 2);
+    out.textContent = formatRelayerEnvelopeForPre(r);
   } catch (e) {
     const m = errMsg(e);
     out.textContent = m;
@@ -1260,8 +1699,8 @@ async function refreshPnl(opts = {}) {
           <td>${o.entryBtcPrice ? '$' + Number(o.entryBtcPrice).toLocaleString() : '—'}</td>
           <td>${o.unrealizedPnlUsd != null ? fmtUsd(o.unrealizedPnlUsd) : '—'}</td>
           <td class="pos-close-cell">
-            <input type="text" class="pos-close-amt" data-tid="${escapeHtml(o.tradeId)}" placeholder="Realized $" size="10" />
-            <button type="button" class="btn small primary pos-close-btn" data-tid="${escapeHtml(o.tradeId)}">Close</button>
+            <input type="text" class="pos-close-amt" data-tid="${escapeHtml(o.tradeId)}" placeholder="Optional realized $" title="Blank = Twilight-leg mark at close after venue exits. Real mode runs relayer + CEX reduce-only when those legs existed." size="12" />
+            <button type="button" class="btn small primary pos-close-btn" data-tid="${escapeHtml(o.tradeId)}" data-mode="${escapeHtml(o.mode || '')}" data-mtm-usd="${Number.isFinite(Number(o.unrealizedPnlUsd)) ? Number(o.unrealizedPnlUsd) : 0}">Close</button>
           </td>
         </tr>`
         )
@@ -1269,7 +1708,7 @@ async function refreshPnl(opts = {}) {
       if (!opens.length) openBody.innerHTML = `<tr><td colspan="5">No open positions. Run a strategy (Sim) to open one.</td></tr>`;
     }
 
-    const closed = (p.closedPositions || []).slice(0, 30);
+    const closed = p.closedPositions || [];
     if (closedBody) {
       closedBody.innerHTML = closed
         .map(
@@ -1282,7 +1721,7 @@ async function refreshPnl(opts = {}) {
         )
         .join('');
       if (!closed.length) {
-        closedBody.innerHTML = `<tr><td colspan="3">No closed positions yet. Enter realized P&amp;L when you flatten.</td></tr>`;
+        closedBody.innerHTML = `<tr><td colspan="3">No closed positions yet. Use Close on an open row (real = venue exits + ledger).</td></tr>`;
       }
     }
   } catch (e) {
@@ -1535,6 +1974,7 @@ async function runStrategyExecute(strategyId, mode, options = {}) {
       }
       if (w.walletId) body.walletId = w.walletId;
       if (w.password) body.password = w.password;
+      body.twilightAccountIndex = getTwilightAccountIndexForStrategyRun();
     }
     const r = await readJson('/api/monitor/run-strategy', {
       method: 'POST',
@@ -1722,16 +2162,73 @@ async function refreshTradeDesk(opts = {}) {
   }
 }
 
-async function refreshStrategies(opts = {}) {
+/** Same CEX detection as `agents/twilight-strategy-monitor/src/normalize.js` `cexVenue`. */
+function strategyCexVenue(s) {
+  if (s?.isBybitStrategy) return 'bybit';
+  const hasBinance =
+    s?.binancePosition &&
+    String(s.binancePosition).toLowerCase() !== 'null' &&
+    Number(s.binanceSize) > 0;
+  if (hasBinance) return 'binance';
+  return null;
+}
+
+function loadStrategiesCexFilterPrefs() {
+  try {
+    const raw = localStorage.getItem(STRATEGIES_CEX_FILTER_STORAGE_KEY);
+    if (!raw) return { binance: false, bybit: false };
+    const j = JSON.parse(raw);
+    return { binance: !!j.binance, bybit: !!j.bybit };
+  } catch {
+    return { binance: false, bybit: false };
+  }
+}
+
+function saveStrategiesCexFilterPrefs() {
+  const binance = document.getElementById('chk-strategies-cex-binance')?.checked === true;
+  const bybit = document.getElementById('chk-strategies-cex-bybit')?.checked === true;
+  localStorage.setItem(STRATEGIES_CEX_FILTER_STORAGE_KEY, JSON.stringify({ binance, bybit }));
+}
+
+function applyStrategiesCexFilterPrefsToUi() {
+  const f = loadStrategiesCexFilterPrefs();
+  const cbB = document.getElementById('chk-strategies-cex-binance');
+  const cbY = document.getElementById('chk-strategies-cex-bybit');
+  if (cbB) cbB.checked = f.binance;
+  if (cbY) cbY.checked = f.bybit;
+}
+
+function getStrategiesCexFilterState() {
+  return {
+    binance: document.getElementById('chk-strategies-cex-binance')?.checked === true,
+    bybit: document.getElementById('chk-strategies-cex-bybit')?.checked === true,
+  };
+}
+
+function strategyPassesCexLegFilter(s) {
+  const f = getStrategiesCexFilterState();
+  if (!f.binance && !f.bybit) return true;
+  const v = strategyCexVenue(s);
+  if (f.binance && v === 'binance') return true;
+  if (f.bybit && v === 'bybit') return true;
+  return false;
+}
+
+function renderStrategiesTableFromCache() {
   const tbody = document.getElementById('strategies-body');
   const meta = document.getElementById('strategies-meta');
-  try {
-    const zkos = await refreshZkosAccountAvailability();
-    const data = await readJson('/api/strategies/best?limit=20&profitable=true');
-    const rows = data.strategies || [];
-    tbody.innerHTML = rows
-      .map(
-        (s) => `
+  if (!tbody) return;
+  const data = strategiesListCache;
+  if (!data || !Array.isArray(data.strategies)) {
+    tbody.innerHTML = '<tr><td colspan="8">Loading…</td></tr>';
+    return;
+  }
+  const zkos = zkosAccountAvailability;
+  const all = data.strategies;
+  const rows = all.filter(strategyPassesCexLegFilter);
+  tbody.innerHTML = rows
+    .map(
+      (s) => `
       <tr>
         <td>${s.id}</td>
         <td>${escapeHtml(s.name || '')}</td>
@@ -1746,55 +2243,38 @@ async function refreshStrategies(opts = {}) {
           <button type="button" class="btn small danger strategy-exec" data-sid="${s.id}" data-mode="real" data-strategy-meta="${encodeStrategyMetaForBtn(s)}" ${zkos.canRunReal ? '' : 'disabled'} title="${escapeHtml(zkos.reason || '')}">Real</button>
         </td>
       </tr>`
-      )
-      .join('');
-    if (!rows.length) tbody.innerHTML = `<tr><td colspan="8">No strategies returned.</td></tr>`;
-    if (meta) {
-      meta.textContent = `Updated ${fmtTime(data.timestamp)} · BTC ~ $${data.btcPrice != null ? Number(data.btcPrice).toLocaleString() : '—'} · ${data.count ?? rows.length} rows`;
-    }
-  } catch (e) {
-    if (!shouldSurfaceFetchError(e, opts)) return;
-    const m = errMsg(e);
-    tbody.innerHTML = `<tr><td colspan="8">${escapeHtml(m)}</td></tr>`;
-    if (meta) meta.textContent = '';
-    if (opts.userAction) showDashboardError(m, 'Best trades');
+    )
+    .join('');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="8">${
+      all.length ? 'No strategies match the CEX filter (try other checkboxes or refresh).' : 'No strategies returned.'
+    }</td></tr>`;
+  }
+  if (meta) {
+    const f = getStrategiesCexFilterState();
+    const filterActive = f.binance || f.bybit;
+    const filterPart = filterActive
+      ? ` · Showing ${rows.length} of ${all.length} (Binance${f.binance ? ' on' : ' off'}, Bybit${f.bybit ? ' on' : ' off'})`
+      : ` · ${all.length} rows`;
+    meta.textContent = `Updated ${fmtTime(data.timestamp)} · BTC ~ $${data.btcPrice != null ? Number(data.btcPrice).toLocaleString() : '—'}${filterPart}`;
   }
 }
 
-async function refreshJournal(opts = {}) {
-  const tbody = document.getElementById('journal-body');
-  const sumEl = document.getElementById('journal-summary');
-  if (!tbody) return;
+async function refreshStrategies(opts = {}) {
+  const tbody = document.getElementById('strategies-body');
+  const meta = document.getElementById('strategies-meta');
   try {
-    const j = await readJson('/api/trade-journal');
-    const { entries, summary } = j;
-    tbody.innerHTML = entries
-      .map(
-        (e) => `
-      <tr>
-        <td>${fmtTime(e.at)}</td>
-        <td>${escapeHtml(e.label)}</td>
-        <td>${escapeHtml(e.venue)}</td>
-        <td>${escapeHtml(e.side)}</td>
-        <td>${e.pnlUsd != null ? fmtUsd(e.pnlUsd) : '—'}</td>
-        <td><button type="button" class="btn small ghost journal-del" data-id="${escapeHtml(e.id)}">Remove</button></td>
-      </tr>`
-      )
-      .join('');
-    if (!entries.length) tbody.innerHTML = `<tr><td colspan="6">No journal entries yet.</td></tr>`;
-    if (sumEl) {
-      sumEl.innerHTML = `
-      <dt>Entries</dt><dd>${summary.count}</dd>
-      <dt>Sum PnL USD</dt><dd>${fmtUsd(summary.sumPnlUsd)}</dd>
-      <dt>Sum fees USD</dt><dd>${fmtUsd(summary.sumFeesUsd)}</dd>
-    `;
-    }
+    const zkos = await refreshZkosAccountAvailability();
+    const data = await readJson('/api/strategies/best?limit=20&profitable=true');
+    strategiesListCache = data;
+    renderStrategiesTableFromCache();
   } catch (e) {
+    strategiesListCache = null;
     if (!shouldSurfaceFetchError(e, opts)) return;
     const m = errMsg(e);
-    tbody.innerHTML = `<tr><td colspan="6">${escapeHtml(m)}</td></tr>`;
-    if (sumEl) sumEl.innerHTML = `<dt>Error</dt><dd>${escapeHtml(m)}</dd>`;
-    if (opts.userAction) showDashboardError(m, 'Journal');
+    if (tbody) tbody.innerHTML = `<tr><td colspan="8">${escapeHtml(m)}</td></tr>`;
+    if (meta) meta.textContent = '';
+    if (opts.userAction) showDashboardError(m, 'Best trades');
   }
 }
 
@@ -1923,9 +2403,12 @@ document.getElementById('modal-real-run')?.addEventListener('click', async () =>
 });
 document.getElementById('modal-real-fetch-balance')?.addEventListener('click', async () => {
   const pre = document.getElementById('modal-real-balance-out');
-  const creds = manageWalletCreds();
-  if (!creds.walletId) {
-    showDashboardWarning('Select a wallet in Twilight wallet (step 1) before loading balance.', 'Real trade');
+  const creds = walletSession();
+  if (!creds.walletId || !creds.password) {
+    showDashboardWarning(
+      'Log in with wallet + encryption password in Twilight wallet (step 1) before loading the ZkOS snapshot.',
+      'Real trade'
+    );
     return;
   }
   if (pre) {
@@ -1933,12 +2416,27 @@ document.getElementById('modal-real-fetch-balance')?.addEventListener('click', a
     pre.textContent = 'Loading…';
   }
   try {
-    const r = await readJson('/api/relayer/wallet/balance', {
+    const r = await readJson('/api/relayer/wallet/accounts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(creds),
     });
-    if (pre) pre.textContent = r.stdout || r.stderr || JSON.stringify(r, null, 2);
+    const rows = parseZkOsAccountDetailsFromStdout(r?.stdout || '');
+    const idxNum = Number(getTwilightAccountIndexForStrategyRun());
+    const idx = Number.isFinite(idxNum) && idxNum >= 0 ? idxNum : 0;
+    const row = rows.find((x) => x.index === idx);
+    let text = `ZkOS row for index ${idx} (same index sent with real strategy runs — ZkOS field / .env fallback)\n\n`;
+    if (!r?.ok) {
+      text += `Relayer did not return ok.\nstderr:\n${r?.stderr || '(none)'}\n\nstdout:\n${r?.stdout || '(none)'}`;
+    } else if (!row) {
+      const known = rows.length ? rows.map((x) => x.index).join(', ') : '(none — no ZkOS accounts yet)';
+      text +=
+        `No account row for index ${idx}. Known indices: ${known}.\n` +
+        `Fund / list accounts in ZkOS (step 3b) or fix the index in the env form.\n\n--- stdout ---\n${r.stdout || ''}`;
+    } else {
+      text += `${JSON.stringify(row, null, 2)}\n\n--- relayer stdout ---\n${r.stdout || ''}`;
+    }
+    if (pre) pre.textContent = text;
   } catch (e) {
     if (pre) pre.textContent = errMsg(e);
   }
@@ -1964,25 +2462,87 @@ document.getElementById('positions-open-body')?.addEventListener('click', async 
   const b = ev.target.closest('.pos-close-btn');
   if (!b) return;
   const tid = b.getAttribute('data-tid');
+  const mode = (b.getAttribute('data-mode') || '').trim().toLowerCase();
   const tr = b.closest('tr');
   const inp = tr?.querySelector('.pos-close-amt');
   const raw = inp?.value?.trim();
-  if (raw === '' || raw == null) {
-    showDashboardWarning('Enter realized P&L in USD before closing.', 'Close position');
-    return;
+  const useMtm = raw === '' || raw == null;
+  if (mode === 'real') {
+    if (
+      !confirm(
+        'Close this REAL position? This submits a Twilight market close when that leg was opened, then a reduce-only CEX order when the hedge leg was opened, then updates the ledger.'
+      )
+    ) {
+      return;
+    }
+    const w0 = walletSession();
+    if (!w0.walletId || !w0.password) {
+      showDashboardWarning(
+        'Real close needs wallet + encryption password in Twilight wallet (step 1).',
+        'Close position'
+      );
+      return;
+    }
   }
-  const num = Number(raw);
-  if (Number.isNaN(num)) {
-    showDashboardWarning('Invalid number for realized P&L.', 'Close position');
-    return;
+  const payload = {};
+  if (!useMtm) {
+    const num = Number(raw);
+    if (Number.isNaN(num)) {
+      showDashboardWarning('Invalid number for realized P&L override.', 'Close position');
+      return;
+    }
+    payload.realizedPnlUsd = num;
+  } else {
+    const snap = Number(b.getAttribute('data-mtm-usd'));
+    payload.realizedPnlUsd = Number.isFinite(snap) ? snap : 0;
+  }
+  if (mode === 'real') {
+    const w = walletSession();
+    if (w.walletId) payload.walletId = w.walletId;
+    if (w.password) payload.password = w.password;
   }
   try {
-    await readJson(`/api/positions/${encodeURIComponent(tid)}/close`, {
+    const data = await readJson(`/api/positions/${encodeURIComponent(tid)}/close`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ realizedPnlUsd: num }),
+      body: JSON.stringify(payload),
     });
+    if (data?.realizedPnlUsd != null && Number.isFinite(Number(data.realizedPnlUsd))) {
+      const vs = data.venueSteps || {};
+      const parts = [];
+      if (mode === 'real') {
+        if (vs.twilight) parts.push(vs.twilight.ok ? 'Twilight: closed' : 'Twilight: attempted');
+        if (vs.cex?.ok) parts.push(vs.cex.orderId ? `CEX: order ${vs.cex.orderId}` : 'CEX: flattened');
+        const zr = vs.zkRotate;
+        const closedIdx = Number(vs.twilight?.accountIndex);
+        if (zr?.ok && zr.newAccountIndexHint != null && Number.isFinite(closedIdx) && zr.newAccountIndexHint > closedIdx) {
+          const idxEl = document.getElementById('zkos-strategy-index');
+          if (idxEl) {
+            idxEl.value = String(zr.newAccountIndexHint);
+            rebuildZkosActiveAccountDropdown();
+            updateZkosTradeAccountBanner();
+          }
+          parts.push(
+            `ZkOS: rotated to index ${zr.newAccountIndexHint} (field updated — Save default index in step 3b to persist .env)`
+          );
+        } else if (zr?.ok) {
+          parts.push('ZkOS: transfer ran — use List ZkOS accounts if the new index is not obvious, then set the field / save .env.');
+        } else if (zr?.skipped && Array.isArray(zr.reasons) && zr.reasons.length) {
+          parts.push(`ZkOS: ${zr.reasons.join(' ')}`);
+        } else if (zr && zr.skipped !== true && zr.ok === false) {
+          showDashboardWarning(
+            `Twilight closed but ZkOS transfer failed: ${zr.error || zr.stderr || zr.stdout || 'unknown'}. When the account is ready, use step 3b Transfer at 100% from index ${Number.isFinite(closedIdx) ? closedIdx : '?'}.`,
+            'Close position'
+          );
+        }
+      }
+      parts.push(`Realized (ledger) ${fmtUsd(data.realizedPnlUsd)}${useMtm ? ' · MTM snapshot (Twilight leg)' : ''}`);
+      showDashboardSuccess(parts.join(' · '), 'Close position');
+    }
     await refreshPnl({ userAction: true });
+    await refreshTradeDesk({ userAction: false });
+    await refreshZkosAccountAvailability();
+    renderStrategiesTableFromCache();
   } catch (e) {
     showDashboardError(errMsg(e), 'Close position');
   }
@@ -2015,7 +2575,10 @@ function renderPresetKvTable(obj) {
 function syncZkosTwilightIndexField() {
   const z = document.getElementById('zkos-strategy-index');
   const envEl = document.getElementById('env-TWILIGHT_ACCOUNT_INDEX');
-  if (z && envEl) z.value = envEl.value;
+  const fromEnv = envEl?.value?.trim();
+  if (z) z.value = fromEnv !== undefined && fromEnv !== '' ? fromEnv : '0';
+  rebuildZkosActiveAccountDropdown();
+  updateZkosTradeAccountBanner();
 }
 
 async function refreshEnv() {
@@ -2112,6 +2675,7 @@ async function refreshEnv() {
     syncZkosAllowToggle(data.entries || []);
     syncTwilightNetworkSwitch(data.entries || []);
     syncZkosTwilightIndexField();
+    syncZkosInspector();
   } catch (e) {
     if (isLikelyNetworkFailure(e)) return;
     const m = errMsg(e);
@@ -2557,9 +3121,21 @@ document.getElementById('btn-manage-sync-nonce')?.addEventListener('click', () =
   managePostWithCreds('/api/relayer/wallet/sync-nonce')
 );
 
-document.getElementById('btn-zkos-accounts')?.addEventListener('click', () =>
-  zkosPostWithCreds('/api/relayer/wallet/accounts', {})
-);
+document.getElementById('btn-zkos-accounts')?.addEventListener('click', () => runZkosListAccounts({ userAction: true }));
+document.getElementById('zkos-active-account-select')?.addEventListener('change', (ev) => {
+  const v = ev.target?.value;
+  const idx = document.getElementById('zkos-strategy-index');
+  if (!idx) return;
+  if (v === '' || v == null) return;
+  idx.value = String(v);
+  updateZkosTradeAccountBanner();
+  syncZkosInspector();
+});
+document.getElementById('zkos-strategy-index')?.addEventListener('input', () => {
+  rebuildZkosActiveAccountDropdown();
+  updateZkosTradeAccountBanner();
+  syncZkosInspector();
+});
 document.getElementById('btn-zkos-fund')?.addEventListener('click', () => {
   const amount = document.getElementById('zkos-fund-sats')?.value?.trim();
   if (!amount) {
@@ -2568,13 +3144,87 @@ document.getElementById('btn-zkos-fund')?.addEventListener('click', () => {
   }
   zkosPostWithCreds('/api/relayer/zkaccount/fund', { amount });
 });
-document.getElementById('btn-zkos-transfer')?.addEventListener('click', () => {
-  const from = document.getElementById('zkos-rotate-from')?.value?.trim();
-  if (from === '' || from == null) {
-    showDashboardWarning('Enter the account index to rotate from.', 'ZkOS');
+document.getElementById('zkos-transfer-from')?.addEventListener('change', () => syncZkosTransferSliderState());
+document.getElementById('zkos-transfer-pct')?.addEventListener('input', () => syncZkosTransferSliderState());
+
+document.getElementById('btn-zkos-transfer')?.addEventListener('click', async () => {
+  const out = document.getElementById('zkos-out');
+  const sel = document.getElementById('zkos-transfer-from');
+  const pctEl = document.getElementById('zkos-transfer-pct');
+  const creds = walletSession();
+  if (!creds.walletId || !creds.password) {
+    showDashboardWarning('Select wallet and enter password in Twilight wallet (step 1).', 'ZkOS');
     return;
   }
-  zkosPostWithCreds('/api/relayer/zkaccount/transfer', { from });
+  const from = sel?.value?.trim();
+  if (!from) {
+    showDashboardWarning('Choose a source ZkOS account (list accounts first).', 'ZkOS');
+    return;
+  }
+  const maxSats = Number(sel?.selectedOptions?.[0]?.dataset?.maxSats ?? 0);
+  if (!Number.isFinite(maxSats) || maxSats <= 0) {
+    showDashboardWarning('Could not read a positive balance for this row; list accounts again.', 'ZkOS');
+    return;
+  }
+  const pct = Math.min(100, Math.max(0, Number(pctEl?.value ?? 100)));
+  const amount = zkosTransferAmountForPct(maxSats, pct);
+  const useFullTransfer = pct >= 100 || amount >= maxSats;
+  if (useFullTransfer) {
+    if (
+      !confirm(
+        `Transfer the full ${maxSats.toLocaleString()} sats from ZkOS index ${from} into one new account? (relayer-cli zkaccount transfer)`
+      )
+    ) {
+      return;
+    }
+  } else {
+    const remainder = maxSats - amount;
+    if (amount < 1 || remainder < 1) {
+      showDashboardWarning(
+        'Move the slider so both split parts are at least 1 sat, or set 100% for a full transfer.',
+        'ZkOS'
+      );
+      return;
+    }
+    if (
+      !confirm(
+        `Split ZkOS index ${from} (${maxSats.toLocaleString()} sats) into two NEW accounts: ${amount.toLocaleString()} and ${remainder.toLocaleString()} sats? (zkaccount split — does not deposit into an existing index.)`
+      )
+    ) {
+      return;
+    }
+  }
+  if (out) out.textContent = 'Running…';
+  try {
+    let r;
+    if (useFullTransfer) {
+      r = await readJson('/api/relayer/zkaccount/transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...creds, accountIndex: Number(from) }),
+      });
+    } else {
+      r = await readJson('/api/relayer/zkaccount/split', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...creds,
+          accountIndex: Number(from),
+          balances: `${amount},${maxSats - amount}`,
+        }),
+      });
+    }
+    if (out) out.textContent = formatRelayerEnvelopeForPre(r);
+    if (r?.ok) {
+      await runZkosListAccounts({ userAction: false });
+      await refreshZkosAccountAvailability();
+      renderStrategiesTableFromCache();
+    }
+  } catch (e) {
+    const m = errMsg(e);
+    if (out) out.textContent = m;
+    showDashboardError(m, 'ZkOS');
+  }
 });
 document.getElementById('btn-zkos-refresh-balance')?.addEventListener('click', () =>
   refreshZkosBalance({ userAction: true })
@@ -2599,11 +3249,150 @@ document.getElementById('btn-zkos-save-index')?.addEventListener('click', async 
       out.textContent = `Saved TWILIGHT_ACCOUNT_INDEX=${v || '(empty)'}. Reloaded env.`;
     }
     showDashboardSuccess(`TWILIGHT_ACCOUNT_INDEX saved as ${v || '(empty)'}.`, 'ZkOS');
+    updateZkosTradeAccountBanner();
   } catch (e) {
     const m = errMsg(e);
     if (out) out.textContent = m;
     showDashboardError(m, 'ZkOS');
   }
+});
+
+document.getElementById('zkos-inspector-raw-toggle')?.addEventListener('change', (ev) => {
+  const pre = document.getElementById('zkos-inspector-raw');
+  if (pre) pre.hidden = !ev.target.checked;
+});
+
+document.getElementById('btn-zkos-insp-use-index')?.addEventListener('click', () => {
+  const row = getSelectedZkOsRow();
+  if (!row) return;
+  const idx = document.getElementById('zkos-strategy-index');
+  if (idx) idx.value = String(row.index);
+  rebuildZkosActiveAccountDropdown();
+  updateZkosTradeAccountBanner();
+  syncZkosInspector();
+  showDashboardSuccess(
+    `Strategy index field set to ${row.index} (Save default index in step 3b to persist .env).`,
+    'ZkOS'
+  );
+});
+
+document.getElementById('btn-zkos-insp-close')?.addEventListener('click', async () => {
+  const row = getSelectedZkOsRow();
+  if (!row) return;
+  const creds = walletSession();
+  if (!creds.walletId || !creds.password) {
+    showDashboardWarning('Wallet + password required (step 1).', 'ZkOS');
+    return;
+  }
+  if (!confirm(`Close Twilight trade on ZkOS index ${row.index}?`)) return;
+  await runZkosInspectorRelayerToOut('Close trade', '/api/relayer/order/close-trade', {
+    ...creds,
+    accountIndex: row.index,
+    noWait: document.getElementById('zkos-insp-close-nowait')?.checked === true,
+  });
+  await runZkosListAccounts({ userAction: false, silentOut: true });
+  await refreshZkosAccountAvailability();
+  syncZkosInspector();
+});
+
+document.getElementById('btn-zkos-insp-cancel')?.addEventListener('click', async () => {
+  const row = getSelectedZkOsRow();
+  if (!row) return;
+  if (!confirm(`Cancel pending trade on ZkOS index ${row.index}?`)) return;
+  await runZkosInspectorRelayerToOut('Cancel trade', '/api/relayer/order/cancel-trade', {
+    accountIndex: row.index,
+  });
+  await runZkosListAccounts({ userAction: false, silentOut: true });
+  syncZkosInspector();
+});
+
+document.getElementById('btn-zkos-insp-unlock-close')?.addEventListener('click', async () => {
+  const row = getSelectedZkOsRow();
+  if (!row) return;
+  if (!confirm(`Unlock settled close on ZkOS index ${row.index}?`)) return;
+  await runZkosInspectorRelayerToOut(
+    'Unlock settled close',
+    '/api/relayer/order/unlock-close-order',
+    { accountIndex: row.index }
+  );
+  await runZkosListAccounts({ userAction: false, silentOut: true });
+  syncZkosInspector();
+});
+
+document.getElementById('btn-zkos-insp-unlock-failed')?.addEventListener('click', async () => {
+  const row = getSelectedZkOsRow();
+  if (!row) return;
+  if (!confirm(`Unlock failed order on ZkOS index ${row.index}?`)) return;
+  await runZkosInspectorRelayerToOut(
+    'Unlock failed order',
+    '/api/relayer/order/unlock-failed-order',
+    { accountIndex: row.index }
+  );
+  await runZkosListAccounts({ userAction: false, silentOut: true });
+  syncZkosInspector();
+});
+
+document.getElementById('btn-zkos-insp-rotate')?.addEventListener('click', async () => {
+  const row = getSelectedZkOsRow();
+  if (!row) return;
+  const creds = walletSession();
+  if (!creds.walletId || !creds.password) {
+    showDashboardWarning('Wallet + password required (step 1).', 'ZkOS');
+    return;
+  }
+  const maxSats = parseZkOsRowBalanceSats(row);
+  const msg =
+    maxSats > 0
+      ? `Transfer all ~${maxSats.toLocaleString()} sats from ZkOS index ${row.index} into one new account?`
+      : `Run full zkaccount transfer from index ${row.index}? (parsed balance is 0 — relayer may still proceed or reject.)`;
+  if (!confirm(msg)) return;
+  await runZkosInspectorRelayerToOut('ZkOS transfer (rotate)', '/api/relayer/zkaccount/transfer', {
+    ...creds,
+    accountIndex: row.index,
+  });
+  await runZkosListAccounts({ userAction: false, silentOut: true });
+  await refreshZkosAccountAvailability();
+  renderStrategiesTableFromCache();
+  syncZkosInspector();
+});
+
+document.getElementById('btn-zkos-insp-withdraw-fill')?.addEventListener('click', () => {
+  const row = getSelectedZkOsRow();
+  const inp = document.getElementById('zkos-insp-withdraw-sats');
+  if (!inp || !row) return;
+  const n = parseZkOsRowBalanceSats(row);
+  inp.value = n > 0 ? String(n) : '';
+});
+
+document.getElementById('btn-zkos-insp-withdraw')?.addEventListener('click', async () => {
+  const row = getSelectedZkOsRow();
+  if (!row) return;
+  const creds = walletSession();
+  if (!creds.walletId || !creds.password) {
+    showDashboardWarning('Wallet + password required (step 1).', 'ZkOS');
+    return;
+  }
+  const raw = document.getElementById('zkos-insp-withdraw-sats')?.value?.trim() ?? '';
+  const amt = Math.floor(Number(raw.replace(/,/g, '')));
+  if (!Number.isFinite(amt) || amt <= 0) {
+    showDashboardWarning('Enter a positive withdraw amount in sats (or use Fill listed balance).', 'ZkOS');
+    return;
+  }
+  if (
+    !confirm(
+      `Withdraw ${amt.toLocaleString()} sats from ZkOS index ${row.index} to this wallet’s on-chain (SATS) balance?`
+    )
+  ) {
+    return;
+  }
+  await runZkosInspectorRelayerToOut('ZkOS withdraw', '/api/relayer/zkaccount/withdraw', {
+    ...creds,
+    accountIndex: row.index,
+    amount: String(amt),
+  });
+  await runZkosListAccounts({ userAction: false, silentOut: true });
+  await refreshZkosBalance({ userAction: false });
+  syncZkosInspector();
 });
 
 document.getElementById('btn-relayer-create')?.addEventListener('click', async () => {
@@ -2676,53 +3465,16 @@ document.getElementById('btn-test-bybit-key')?.addEventListener('click', () =>
 document.getElementById('btn-strategies-refresh')?.addEventListener('click', () =>
   refreshStrategies({ userAction: true })
 );
+function onStrategiesCexFilterChange() {
+  saveStrategiesCexFilterPrefs();
+  renderStrategiesTableFromCache();
+}
+document.getElementById('chk-strategies-cex-binance')?.addEventListener('change', onStrategiesCexFilterChange);
+document.getElementById('chk-strategies-cex-bybit')?.addEventListener('change', onStrategiesCexFilterChange);
 
 document.getElementById('btn-trade-desk-refresh')?.addEventListener('click', () =>
   refreshTradeDesk({ userAction: true })
 );
-
-document.getElementById('btn-journal-refresh')?.addEventListener('click', () =>
-  refreshJournal({ userAction: true })
-);
-document.getElementById('btn-journal-add')?.addEventListener('click', async () => {
-  try {
-    await readJson('/api/trade-journal', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        label: document.getElementById('journal-label').value,
-        venue: document.getElementById('journal-venue').value,
-        side: document.getElementById('journal-side').value,
-        notionalUsd: document.getElementById('journal-notional').value,
-        pnlUsd: document.getElementById('journal-pnl').value,
-        feesUsd: document.getElementById('journal-fees').value,
-        note: document.getElementById('journal-note').value,
-        walletId: document.getElementById('wallet-select').value || null,
-      }),
-    });
-    document.getElementById('journal-label').value = '';
-    document.getElementById('journal-notional').value = '';
-    document.getElementById('journal-pnl').value = '';
-    document.getElementById('journal-fees').value = '';
-    document.getElementById('journal-note').value = '';
-    await refreshJournal();
-  } catch (e) {
-    showDashboardError(errMsg(e), 'Add journal entry');
-  }
-});
-
-document.getElementById('journal-body')?.addEventListener('click', async (ev) => {
-  const btn = ev.target.closest('.journal-del');
-  if (!btn) return;
-  const id = btn.getAttribute('data-id');
-  if (!id || !confirm('Remove this journal entry?')) return;
-  try {
-    await readJson(`/api/trade-journal/${encodeURIComponent(id)}`, { method: 'DELETE' });
-    await refreshJournal();
-  } catch (e) {
-    showDashboardError(errMsg(e), 'Remove journal entry');
-  }
-});
 
 document.getElementById('btn-start')?.addEventListener('click', async () => {
   try {
@@ -2837,7 +3589,10 @@ document.getElementById('btn-relayer-fund')?.addEventListener('click', () => {
 
 document.getElementById('btn-relayer-transfer')?.addEventListener('click', () => {
   const from = document.getElementById('relayer-zk-from').value.trim();
-  relayerPost('/api/relayer/zkaccount/transfer', { from, ...walletSession() });
+  relayerPost('/api/relayer/zkaccount/transfer', {
+    accountIndex: document.getElementById('relayer-zk-from').value.trim(),
+    ...walletSession(),
+  });
 });
 
 document.getElementById('btn-relayer-open')?.addEventListener('click', () => {
@@ -2855,11 +3610,24 @@ document.getElementById('btn-relayer-close')?.addEventListener('click', () => {
   relayerPost('/api/relayer/order/close-trade', {
     accountIndex: document.getElementById('relayer-close-acc').value.trim(),
     noWait: document.getElementById('relayer-close-nowait').checked,
+    ...walletSession(),
   });
 });
 
 document.getElementById('btn-relayer-cancel')?.addEventListener('click', () => {
   relayerPost('/api/relayer/order/cancel-trade', {
+    accountIndex: document.getElementById('relayer-close-acc').value.trim(),
+  });
+});
+
+document.getElementById('btn-relayer-unlock-close')?.addEventListener('click', () => {
+  relayerPost('/api/relayer/order/unlock-close-order', {
+    accountIndex: document.getElementById('relayer-close-acc').value.trim(),
+  });
+});
+
+document.getElementById('btn-relayer-unlock-failed')?.addEventListener('click', () => {
+  relayerPost('/api/relayer/order/unlock-failed-order', {
     accountIndex: document.getElementById('relayer-close-acc').value.trim(),
   });
 });
@@ -2882,11 +3650,13 @@ if (savedWalletSession?.password) {
 }
 
 initCollapsibleSections();
+rebuildZkosTransferFromSelect();
+syncZkosInspector();
 
 refreshWalletList();
 loadRelayerMetaHints();
 loadExchangeStatus();
-refreshJournal();
+applyStrategiesCexFilterPrefsToUi();
 refreshStrategies();
 refreshTradeDesk();
 loadRelayerMeta();

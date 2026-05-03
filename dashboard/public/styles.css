@@ -399,6 +399,11 @@ pre.log {
   overflow: auto;
   max-height: 200px;
   border: 1px solid var(--border);
+  /* Multi-line relayer stdout inside JSON was one unbreakable line — looked “blank” in narrow iframes. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
 }
 
 pre.log {
@@ -510,6 +515,24 @@ tbody tr:hover {
 
 .subhead:first-of-type {
   margin-top: 0.5rem;
+}
+
+.strategy-cex-filter-sep {
+  margin: 0 0.15rem;
+  user-select: none;
+}
+
+.strategy-cex-filter-label {
+  margin-right: 0.15rem;
+}
+
+.zkos-active-account-panel {
+  margin-bottom: 1rem;
+}
+
+.zkos-active-account-panel .zkos-trade-account-line {
+  margin: 0.35rem 0 0.25rem;
+  font-size: 1.05rem;
 }
 
 .zkos-balance-row {

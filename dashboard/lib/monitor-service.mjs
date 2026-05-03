@@ -12,8 +12,35 @@ import {
   savePortfolioSnapshot,
 } from './persistence.mjs';
 import { appendOpenPosition } from './position-ledger.mjs';
+import { loadExchangeKeys } from './exchange-keys-store.mjs';
 
 const MAX_LOGS = 200;
+
+/**
+ * Copy CEX keys from `data/exchange-keys.json` into `process.env` when vars are unset.
+ * Ensures real runs from the dashboard see the same keys as the desk (avoids repo-root drift vs agent-only `cexFileCreds`).
+ */
+export function applyDashboardExchangeKeysToEnv() {
+  let raw;
+  try {
+    raw = loadExchangeKeys();
+  } catch {
+    return;
+  }
+  if (!raw || typeof raw !== 'object') return;
+  const b = raw.binance;
+  const y = raw.bybit;
+  if (!(process.env.BINANCE_API_KEY || '').trim() && b?.apiKey?.trim() && b?.apiSecret?.trim()) {
+    process.env.BINANCE_API_KEY = b.apiKey.trim();
+    process.env.BINANCE_API_SECRET = b.apiSecret.trim();
+    if (b.useTestnet) process.env.BINANCE_USE_TESTNET = '1';
+  }
+  if (!(process.env.BYBIT_API_KEY || '').trim() && y?.apiKey?.trim() && y?.apiSecret?.trim()) {
+    process.env.BYBIT_API_KEY = y.apiKey.trim();
+    process.env.BYBIT_API_SECRET = y.apiSecret.trim();
+    if (y.useTestnet) process.env.BYBIT_USE_TESTNET = '1';
+  }
+}
 
 function applySnapshot(portfolio, snap) {
   if (!snap || !Array.isArray(snap.logicalTrades)) return;
@@ -63,6 +90,7 @@ export function createMonitorService() {
   async function tick(executionModeOverride) {
     lastError = null;
     try {
+      applyDashboardExchangeKeysToEnv();
       const config = loadAgentConfig(logger, {
         executionMode: executionModeOverride,
       });
@@ -184,6 +212,7 @@ export function createMonitorService() {
      */
     runStrategyOnce: async (strategyId, executionModeOverride, third) => {
       lastError = null;
+      applyDashboardExchangeKeysToEnv();
       const config = loadAgentConfig(logger, { executionMode: executionModeOverride });
       if (config.executionMode === 'real' && process.env.CONFIRM_REAL_TRADING !== 'YES') {
         throw new Error(

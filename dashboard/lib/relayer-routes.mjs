@@ -47,6 +47,14 @@ function requireZkAllowed() {
   return null;
 }
 
+/** Unlock helpers: allow with ZkOS gate OR orders gate (inspector users often enable Zk only). */
+function requireOrdersOrZkAllowed() {
+  if (process.env.RELAYER_ALLOW_DASHBOARD_ORDERS === 'YES' || process.env.RELAYER_ALLOW_DASHBOARD_ZK === 'YES') {
+    return null;
+  }
+  return 'Set RELAYER_ALLOW_DASHBOARD_ORDERS=YES or RELAYER_ALLOW_DASHBOARD_ZK=YES in .env to enable unlock-close / unlock-failed from the dashboard.';
+}
+
 async function jsonHandler(res, promise) {
   try {
     const result = await promise;
@@ -412,27 +420,93 @@ export function registerRelayerRoutes(app, { requireToken }) {
     jsonHandler(res, runRelayerCli(argv, { cwd: repoRoot }).then((r) => ({ ok: r.ok, ...r })));
   });
 
+  app.post('/api/relayer/zkaccount/withdraw', requireToken, (req, res) => {
+    const gate = requireZkAllowed();
+    if (gate) return res.status(403).json({ error: gate });
+    const { walletId, password } = creds(req.body || {});
+    const err = requireWalletCreds(walletId, password);
+    if (err) return res.status(400).json({ error: err });
+    const accountIndex = req.body?.accountIndex ?? req.body?.account_index;
+    if (accountIndex == null || accountIndex === '') {
+      return res.status(400).json({ error: 'accountIndex is required' });
+    }
+    const { amount, amountMbtc, amountBtc } = req.body || {};
+    const argv = [
+      'zkaccount',
+      'withdraw',
+      '--account-index',
+      String(accountIndex),
+      '--wallet-id',
+      walletId,
+      '--password',
+      password,
+    ];
+    if (amount != null && amount !== '') {
+      argv.push('--amount', String(amount));
+    } else if (amountMbtc != null && amountMbtc !== '') {
+      argv.push('--amount-mbtc', String(amountMbtc));
+    } else if (amountBtc != null && amountBtc !== '') {
+      argv.push('--amount-btc', String(amountBtc));
+    } else {
+      return res.status(400).json({ error: 'Provide amount (sats), amountMbtc, or amountBtc' });
+    }
+    argv.push('--json');
+    jsonHandler(res, runRelayerCli(argv, { cwd: repoRoot }).then((r) => ({ ok: r.ok, ...r })));
+  });
+
   app.post('/api/relayer/zkaccount/transfer', requireToken, (req, res) => {
     const gate = requireZkAllowed();
     if (gate) return res.status(403).json({ error: gate });
     const { walletId, password } = creds(req.body || {});
     const err = requireWalletCreds(walletId, password);
     if (err) return res.status(400).json({ error: err });
-    const from = req.body?.from ?? req.body?.accountIndex;
-    if (from == null || from === '') {
-      return res.status(400).json({ error: 'from (account index) is required' });
+    const accountIndex = req.body?.accountIndex ?? req.body?.account_index ?? req.body?.from;
+    if (accountIndex == null || accountIndex === '') {
+      return res.status(400).json({ error: 'accountIndex (or legacy from) is required' });
     }
     const argv = [
       'zkaccount',
       'transfer',
+      '--account-index',
+      String(accountIndex),
       '--wallet-id',
       walletId,
       '--password',
       password,
-      '--from',
-      String(from),
+      '--json',
     ];
-    argv.push('--json');
+    jsonHandler(res, runRelayerCli(argv, { cwd: repoRoot }).then((r) => ({ ok: r.ok, ...r })));
+  });
+
+  app.post('/api/relayer/zkaccount/split', requireToken, (req, res) => {
+    const gate = requireZkAllowed();
+    if (gate) return res.status(403).json({ error: gate });
+    const { walletId, password } = creds(req.body || {});
+    const err = requireWalletCreds(walletId, password);
+    if (err) return res.status(400).json({ error: err });
+    const accountIndex = req.body?.accountIndex ?? req.body?.account_index;
+    const balances = sanitizeString(req.body?.balances ?? '');
+    if (accountIndex == null || accountIndex === '') {
+      return res.status(400).json({ error: 'accountIndex is required' });
+    }
+    if (!balances) {
+      return res.status(400).json({
+        error: 'balances is required (comma-separated sat amounts, e.g. "10000,20000")',
+      });
+    }
+    const argv = [
+      'zkaccount',
+      'split',
+      '--account-index',
+      String(accountIndex),
+      '--wallet-id',
+      walletId,
+      '--password',
+      password,
+      '--balances',
+      balances,
+      '--json',
+    ];
     jsonHandler(res, runRelayerCli(argv, { cwd: repoRoot }).then((r) => ({ ok: r.ok, ...r })));
   });
 
@@ -471,7 +545,12 @@ export function registerRelayerRoutes(app, { requireToken }) {
     if (accountIndex == null) {
       return res.status(400).json({ error: 'accountIndex is required' });
     }
-    const argv = ['order', 'close-trade', '--account-index', String(accountIndex), '--json'];
+    const { walletId, password } = creds(req.body || {});
+    const argv = ['order', 'close-trade', '--json'];
+    if (walletId && password) {
+      argv.splice(1, 0, '--wallet-id', walletId, '--password', password);
+    }
+    argv.splice(argv.indexOf('--json'), 0, '--account-index', String(accountIndex));
     if (noWait === true) argv.push('--no-wait');
     if (stopLoss != null && stopLoss !== '') argv.push('--stop-loss', String(stopLoss));
     if (takeProfit != null && takeProfit !== '') argv.push('--take-profit', String(takeProfit));
@@ -491,5 +570,39 @@ export function registerRelayerRoutes(app, { requireToken }) {
         cwd: repoRoot,
       }).then((r) => ({ ok: r.ok, ...r }))
     );
+  });
+
+  app.post('/api/relayer/order/unlock-close-order', requireToken, (req, res) => {
+    const gate = requireOrdersOrZkAllowed();
+    if (gate) return res.status(403).json({ error: gate });
+    const accountIndex = req.body?.accountIndex ?? req.body?.account_index;
+    if (accountIndex == null || accountIndex === '') {
+      return res.status(400).json({ error: 'accountIndex is required' });
+    }
+    const argv = [
+      'order',
+      'unlock-close-order',
+      '--account-index',
+      String(accountIndex),
+      '--json',
+    ];
+    jsonHandler(res, runRelayerCli(argv, { cwd: repoRoot }).then((r) => ({ ok: r.ok, ...r })));
+  });
+
+  app.post('/api/relayer/order/unlock-failed-order', requireToken, (req, res) => {
+    const gate = requireOrdersOrZkAllowed();
+    if (gate) return res.status(403).json({ error: gate });
+    const accountIndex = req.body?.accountIndex ?? req.body?.account_index;
+    if (accountIndex == null || accountIndex === '') {
+      return res.status(400).json({ error: 'accountIndex is required' });
+    }
+    const argv = [
+      'order',
+      'unlock-failed-order',
+      '--account-index',
+      String(accountIndex),
+      '--json',
+    ];
+    jsonHandler(res, runRelayerCli(argv, { cwd: repoRoot }).then((r) => ({ ok: r.ok, ...r })));
   });
 }

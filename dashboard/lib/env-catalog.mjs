@@ -186,10 +186,17 @@ export const ENV_DEFS = [
     type: 'text',
   },
   {
+    key: 'AUTO_ZKOS_ROTATE_AFTER_CLOSE',
+    group: 'relayer_exec',
+    label: 'Auto ZkOS rotate after real close',
+    help: 'When YES / unset / empty, after a successful real Trade desk Twilight close the dashboard runs zkaccount transfer on that index (requires RELAYER_ALLOW_DASHBOARD_ZK=YES). Set to 0 or false to skip and rotate manually.',
+    type: 'text',
+  },
+  {
     key: 'RELAYER_ALLOW_DASHBOARD_ZK',
     group: 'relayer_exec',
     label: 'Dashboard ZkOS (fund/transfer)',
-    help: 'YES to allow ZkOS fund/transfer from this dashboard. Prefer the toggle in ZkOS (step 3b).',
+    help: 'YES to allow ZkOS fund, withdraw, and transfer from this dashboard. Prefer the toggle in ZkOS (step 3b).',
     type: 'text',
     /** Controlled from ZkOS section (toggle); omitted from Environment form to avoid duplication. */
     hideFromEnvForm: true,

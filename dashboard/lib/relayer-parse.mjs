@@ -159,6 +159,59 @@ function extractSatsFromBalanceJson(obj, depth = 0) {
   return null;
 }
 
+/**
+ * Parse `relayer-cli wallet accounts --json` stdout into numeric ZkOS account indices.
+ * Handles plain-text "No ZkOS accounts found", JSON arrays, and common object shapes.
+ * @param {string} stdout
+ * @returns {number[]}
+ */
+export function parseZkOsAccountIndicesFromAccountsStdout(stdout) {
+  const s = String(stdout || '').trim();
+  if (!s) return [];
+  if (/no zkos accounts found/i.test(s)) return [];
+
+  const collectFromObject = (row) => {
+    if (row == null || typeof row !== 'object') return null;
+    const raw = row.account_index ?? row.accountIndex ?? row.index ?? row.zk_account_index;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  try {
+    const j = JSON.parse(s);
+    if (Array.isArray(j)) {
+      return j.map(collectFromObject).filter((n) => n != null);
+    }
+    if (j && typeof j === 'object') {
+      for (const key of ['accounts', 'zkosAccounts', 'zkAccounts', 'data']) {
+        const arr = j[key];
+        if (Array.isArray(arr)) {
+          return arr.map(collectFromObject).filter((n) => n != null);
+        }
+      }
+      const one = collectFromObject(j);
+      if (one != null) return [one];
+    }
+  } catch {
+    /* fall through to heuristics */
+  }
+
+  const found = new Set();
+  const re = /(?:account_index|accountIndex|index)\s*[:=]\s*(\d+)/gi;
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    const n = Number(m[1]);
+    if (Number.isFinite(n)) found.add(n);
+  }
+  for (const line of s.split('\n')) {
+    const row = /^\s*(\d+)\s+/.exec(line);
+    if (!row) continue;
+    const n = Number(row[1]);
+    if (Number.isFinite(n)) found.add(n);
+  }
+  return [...found].sort((a, b) => a - b);
+}
+
 export function parseWalletListStdout(stdout) {
   const lines = String(stdout).split('\n');
   let pastSep = false;

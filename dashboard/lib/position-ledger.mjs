@@ -51,6 +51,11 @@ export function unrealizedUsdForOpen(open, currentBtc) {
   return 0;
 }
 
+export function getOpenPosition(tradeId) {
+  const data = loadLedger();
+  return data.open.find((x) => x.tradeId === tradeId) || null;
+}
+
 export function appendOpenPosition({ transaction, strategy, marketSnapshot }) {
   if (!transaction?.tradeId || !strategy) return;
   const data = loadLedger();
@@ -61,6 +66,28 @@ export function appendOpenPosition({ transaction, strategy, marketSnapshot }) {
     Number(strategy.totalMargin) ||
     Number(strategy.twilightSize) ||
     0;
+
+  const ex = transaction.execution || {};
+  let twilightAccountIndex = null;
+  if (ex.twilight?.completed && ex.twilight.accountIndex != null) {
+    const n = Number(ex.twilight.accountIndex);
+    twilightAccountIndex = Number.isFinite(n) ? n : null;
+  }
+  let cexFlatten = null;
+  if (
+    ex.cex?.completed &&
+    ex.cex.flattenSide &&
+    ex.cex.symbol &&
+    ex.cex.venue &&
+    Number(ex.cex.flattenAmount) > 0
+  ) {
+    cexFlatten = {
+      venue: String(ex.cex.venue).toLowerCase(),
+      symbol: ex.cex.symbol,
+      side: String(ex.cex.flattenSide).toLowerCase(),
+      amount: Number(ex.cex.flattenAmount),
+    };
+  }
 
   data.open.unshift({
     tradeId: transaction.tradeId,
@@ -73,6 +100,8 @@ export function appendOpenPosition({ transaction, strategy, marketSnapshot }) {
     exposureUsd,
     notionalUsd: Number(transaction.totalNotionalUsd) || 0,
     venues: transaction.venues || {},
+    twilightAccountIndex,
+    cexFlatten,
   });
   atomicWrite(data);
 }
@@ -122,6 +151,6 @@ export async function getPositionPnlSummary() {
     openCount: data.open.length,
     closedCount: data.closed.length,
     pnlNote:
-      'Realized PnL is from positions you mark closed with an entered amount. Unrealized uses a simple BTC mark vs entry on the Twilight leg (see exposure snapshot).',
+      'Close sends real venue exits when this row was opened in real mode (Twilight market close via relayer when that leg executed, then CEX reduce-only when the hedge leg executed). Simulation rows only update the ledger. Real closes need wallet + password in step 1, RELAYER_ALLOW_DASHBOARD_ORDERS=YES for Twilight, and CEX keys for the hedge. Leave optional realized $ blank to record Twilight-leg mark-to-market at close time.',
   };
 }
