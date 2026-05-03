@@ -18,7 +18,7 @@ Mirrors in this folder are copied verbatim from:
 From the **repository root**:
 
 ```bash
-node scripts/sync-twilight-skills.mjs --check   # CI: exit 1 if mirrors drift from main branch
+node scripts/sync-twilight-skills.mjs --check   # exit 1 if mirrors drift from main branch
 node scripts/sync-twilight-skills.mjs --apply   # copy upstream files; refresh SHAs below
 ```
 
