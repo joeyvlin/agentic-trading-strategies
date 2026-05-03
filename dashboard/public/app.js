@@ -28,6 +28,9 @@ let zkosAccountAvailability = {
 /** Rows from last `wallet accounts` (table or JSON); drives ZkOS account dropdown. */
 let zkosAccountsListCache = [];
 
+/** Last `/api/pnl` open rows — used for click-to-detail modal. */
+let lastOpenPositions = [];
+
 const api = (path, opts = {}) => {
   const headers = { ...opts.headers };
   const token = localStorage.getItem('dashboardToken');
@@ -1689,11 +1692,12 @@ async function refreshPnl(opts = {}) {
     if (note) note.textContent = p.pnlNote || '';
 
     const opens = p.openPositions || [];
+    lastOpenPositions = opens.slice();
     if (openBody) {
       openBody.innerHTML = opens
         .map(
           (o) => `
-        <tr>
+        <tr class="pos-open-row" data-pos-tid="${escapeHtml(o.tradeId)}">
           <td>#${o.strategyId} ${escapeHtml(o.strategyName || '')}</td>
           <td>${escapeHtml(o.mode || '')}</td>
           <td>${o.entryBtcPrice ? '$' + Number(o.entryBtcPrice).toLocaleString() : '—'}</td>
@@ -1727,6 +1731,7 @@ async function refreshPnl(opts = {}) {
   } catch (e) {
     if (!shouldSurfaceFetchError(e, opts)) return;
     const m = errMsg(e);
+    lastOpenPositions = [];
     if (el) el.innerHTML = `<dt>Error</dt><dd>${escapeHtml(m)}</dd>`;
     if (openBody) openBody.innerHTML = '';
     if (closedBody) closedBody.innerHTML = '';
@@ -1895,6 +1900,79 @@ function closeStrategyDetailsModal() {
   strategyDetailsModalState = null;
 }
 
+function closeOpenPositionDetailsModal() {
+  const el = document.getElementById('modal-open-position');
+  if (el) {
+    el.hidden = true;
+    el.setAttribute('aria-hidden', 'true');
+  }
+}
+
+/**
+ * @param {Record<string, unknown>} o open row from `/api/pnl` (ledger + unrealized)
+ */
+function openOpenPositionDetailsModal(o) {
+  const overlay = document.getElementById('modal-open-position');
+  const line = document.getElementById('modal-open-position-line');
+  const tbody = document.getElementById('modal-open-position-table');
+  const raw = document.getElementById('modal-open-position-raw');
+  if (!overlay || !tbody) return;
+
+  const v = o.venues || {};
+  const twUsdRaw = o.twilightSizeUsd;
+  const twUsd =
+    twUsdRaw != null && Number.isFinite(Number(twUsdRaw)) && Number(twUsdRaw) > 0
+      ? Number(twUsdRaw)
+      : Number(v.twilight) || 0;
+  const venueBits = [];
+  if (Number(v.twilight) > 0 || twUsd > 0) {
+    venueBits.push(`Twilight ${fmtUsd(Number(v.twilight) || twUsd)}`);
+  }
+  if (Number(v.binance) > 0) venueBits.push(`Binance ${fmtUsd(v.binance)}`);
+  if (Number(v.bybit) > 0) venueBits.push(`Bybit ${fmtUsd(v.bybit)}`);
+  const venueLine = venueBits.length ? venueBits.join(' · ') : '—';
+
+  const lev = o.twilightLeverage;
+  const levStr =
+    lev != null && Number.isFinite(Number(lev)) && Number(lev) > 0 ? `${Number(lev)}×` : '—';
+
+  if (line) {
+    line.textContent = `${o.tradeId} · #${o.strategyId} ${o.strategyName || ''} · ${o.mode || '—'}`;
+  }
+
+  const rows = [
+    ['Total target notional (at open)', fmtUsd(o.notionalUsd)],
+    ['Leg notionals at execution', venueLine],
+    ['Twilight direction', o.twilightPosition ? String(o.twilightPosition) : '—'],
+    ['Twilight leg size (template USD)', fmtUsd(twUsd)],
+    ['Twilight leverage', levStr],
+    ['Twilight exposure / margin est. (USD)', fmtUsd(o.exposureUsd)],
+    ['BTC mark at open', o.entryBtcPrice ? '$' + Number(o.entryBtcPrice).toLocaleString() : '—'],
+    ['CEX venue (hedge)', o.cexVenue ? String(o.cexVenue) : '—'],
+    ['CEX direction', o.cexPosition ? String(o.cexPosition) : '—'],
+    ['CEX leg notional (template USD)', o.cexNotionalUsd != null ? fmtUsd(Number(o.cexNotionalUsd)) : '—'],
+    ['Unrealized (Twilight leg, illustrative)', fmtUsd(o.unrealizedPnlUsd)],
+    ['ZkOS account index', o.twilightAccountIndex != null ? String(o.twilightAccountIndex) : '—'],
+  ];
+  const cf = o.cexFlatten;
+  if (cf && typeof cf === 'object' && (cf.symbol || cf.venue)) {
+    rows.push([
+      'Reduce-only flatten (for close)',
+      `${cf.venue || '—'} ${cf.symbol || ''} · side ${cf.side || '—'} · amount ${cf.amount != null ? cf.amount : '—'}`,
+    ]);
+  }
+
+  tbody.innerHTML = rows
+    .map(
+      ([k, val]) =>
+        `<tr><th style="width: 42%">${escapeHtml(String(k))}</th><td>${escapeHtml(String(val))}</td></tr>`
+    )
+    .join('');
+  if (raw) raw.textContent = JSON.stringify(o, null, 2);
+  overlay.hidden = false;
+  overlay.setAttribute('aria-hidden', 'false');
+}
+
 function openStrategyDetailsModal(strategy) {
   strategyDetailsModalState = strategy || null;
   const overlay = document.getElementById('modal-strategy-details');
@@ -1989,8 +2067,17 @@ async function runStrategyExecute(strategyId, mode, options = {}) {
     } else {
       const t = r.transaction;
       const ex = t?.execution;
+      const st = r.strategy;
       if (t) {
         let msg = `Logical trade ${t.tradeId}\nStrategy #${t.strategyId} ${t.strategyName || ''}\nMode: ${t.mode || '—'}\nNotional ${fmtUsd(t.totalNotionalUsd)}`;
+        if (st && typeof st === 'object') {
+          const tw = Number(st.twilightSize) || 0;
+          const byb = st.isBybitStrategy;
+          const cexUsd = byb ? Number(st.bybitSize) || 0 : Number(st.binanceSize) || 0;
+          const cexLab = byb ? 'Bybit' : 'Binance';
+          const cexDir = byb ? st.bybitPosition : st.binancePosition;
+          msg += `\nTwilight ${String(st.twilightPosition || '—')} $${tw.toLocaleString()} (${st.twilightLeverage ?? '—'}×) · ${cexLab} ${String(cexDir || '—')} $${cexUsd.toLocaleString()}`;
+        }
         if (ex?.kind === 'simulation' && ex.note) msg += `\n${ex.note}`;
         if (ex?.twilight?.completed) msg += '\nTwilight: executed (see Trade desk for CLI output).';
         if (ex?.twilight?.reason) {
@@ -2458,102 +2545,122 @@ document.addEventListener('keydown', (ev) => {
   closeStrategyDetailsModal();
 });
 
+document.getElementById('modal-open-position-dismiss')?.addEventListener('click', closeOpenPositionDetailsModal);
+document.getElementById('modal-open-position-close')?.addEventListener('click', closeOpenPositionDetailsModal);
+document.getElementById('modal-open-position')?.addEventListener('click', (ev) => {
+  if (ev.target.id === 'modal-open-position') closeOpenPositionDetailsModal();
+});
+document.addEventListener('keydown', (ev) => {
+  const modal = document.getElementById('modal-open-position');
+  if (ev.key !== 'Escape' || !modal || modal.hidden) return;
+  closeOpenPositionDetailsModal();
+});
+
 document.getElementById('positions-open-body')?.addEventListener('click', async (ev) => {
-  const b = ev.target.closest('.pos-close-btn');
-  if (!b) return;
-  const tid = b.getAttribute('data-tid');
-  const mode = (b.getAttribute('data-mode') || '').trim().toLowerCase();
-  const tr = b.closest('tr');
-  const inp = tr?.querySelector('.pos-close-amt');
-  const raw = inp?.value?.trim();
-  const useMtm = raw === '' || raw == null;
-  if (mode === 'real') {
-    if (
-      !confirm(
-        'Close this REAL position? This submits a Twilight market close when that leg was opened, then a reduce-only CEX order when the hedge leg was opened, then updates the ledger.'
-      )
-    ) {
-      return;
-    }
-    const w0 = walletSession();
-    if (!w0.walletId || !w0.password) {
-      showDashboardWarning(
-        'Real close needs wallet + encryption password in Twilight wallet (step 1).',
-        'Close position'
-      );
-      return;
-    }
-  }
-  const payload = {};
-  if (!useMtm) {
-    const num = Number(raw);
-    if (Number.isNaN(num)) {
-      showDashboardWarning('Invalid number for realized P&L override.', 'Close position');
-      return;
-    }
-    payload.realizedPnlUsd = num;
-  } else {
-    const snap = Number(b.getAttribute('data-mtm-usd'));
-    payload.realizedPnlUsd = Number.isFinite(snap) ? snap : 0;
-  }
-  if (mode === 'real') {
-    const w = walletSession();
-    if (w.walletId) payload.walletId = w.walletId;
-    if (w.password) payload.password = w.password;
-  }
-  try {
-    const data = await readJson(`/api/positions/${encodeURIComponent(tid)}/close`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (data?.realizedPnlUsd != null && Number.isFinite(Number(data.realizedPnlUsd))) {
-      const vs = data.venueSteps || {};
-      const parts = [];
-      if (mode === 'real') {
-        if (vs.twilight) parts.push(vs.twilight.ok ? 'Twilight: closed' : 'Twilight: attempted');
-        if (vs.unlockCloseOrder && vs.unlockCloseOrder.ok === false) {
-          const u = vs.unlockCloseOrder;
-          const msg = String(u.stderr || u.stdout || 'relayer error').trim().slice(0, 400);
-          showDashboardWarning(
-            `After close, unlock-close-order did not succeed (exit ${u.code}): ${msg}. If rotation failed, wait for settlement, use ZkOS inspector → Unlock settled close, then Transfer 100%.`,
-            'Close position'
-          );
-        }
-        if (vs.cex?.ok) parts.push(vs.cex.orderId ? `CEX: order ${vs.cex.orderId}` : 'CEX: flattened');
-        const zr = vs.zkRotate;
-        const closedIdx = Number(vs.twilight?.accountIndex);
-        if (zr?.ok && zr.newAccountIndexHint != null && Number.isFinite(closedIdx) && zr.newAccountIndexHint > closedIdx) {
-          const idxEl = document.getElementById('zkos-strategy-index');
-          if (idxEl) {
-            idxEl.value = String(zr.newAccountIndexHint);
-            rebuildZkosActiveAccountDropdown();
-            updateZkosTradeAccountBanner();
-          }
-          parts.push(
-            `ZkOS: rotated to index ${zr.newAccountIndexHint} (field updated — Save default index in step 3b to persist .env)`
-          );
-        } else if (zr?.ok) {
-          parts.push('ZkOS: transfer ran — use List ZkOS accounts if the new index is not obvious, then set the field / save .env.');
-        } else if (zr?.skipped && Array.isArray(zr.reasons) && zr.reasons.length) {
-          parts.push(`ZkOS: ${zr.reasons.join(' ')}`);
-        } else if (zr && zr.skipped !== true && zr.ok === false) {
-          showDashboardWarning(
-            `Twilight closed but ZkOS transfer failed: ${zr.error || zr.stderr || zr.stdout || 'unknown'}. When the account is ready, use step 3b Transfer at 100% from index ${Number.isFinite(closedIdx) ? closedIdx : '?'}.`,
-            'Close position'
-          );
-        }
+  const closeBtn = ev.target.closest('.pos-close-btn');
+  if (closeBtn) {
+    const tid = closeBtn.getAttribute('data-tid');
+    const mode = (closeBtn.getAttribute('data-mode') || '').trim().toLowerCase();
+    const tr = closeBtn.closest('tr');
+    const inp = tr?.querySelector('.pos-close-amt');
+    const raw = inp?.value?.trim();
+    const useMtm = raw === '' || raw == null;
+    if (mode === 'real') {
+      if (
+        !confirm(
+          'Close this REAL position? This submits a Twilight market close when that leg was opened, then a reduce-only CEX order when the hedge leg was opened, then updates the ledger.'
+        )
+      ) {
+        return;
       }
-      parts.push(`Realized (ledger) ${fmtUsd(data.realizedPnlUsd)}${useMtm ? ' · MTM snapshot (Twilight leg)' : ''}`);
-      showDashboardSuccess(parts.join(' · '), 'Close position');
+      const w0 = walletSession();
+      if (!w0.walletId || !w0.password) {
+        showDashboardWarning(
+          'Real close needs wallet + encryption password in Twilight wallet (step 1).',
+          'Close position'
+        );
+        return;
+      }
     }
-    await refreshPnl({ userAction: true });
-    await refreshTradeDesk({ userAction: false });
-    await refreshZkosAccountAvailability();
-    renderStrategiesTableFromCache();
-  } catch (e) {
-    showDashboardError(errMsg(e), 'Close position');
+    const payload = {};
+    if (!useMtm) {
+      const num = Number(raw);
+      if (Number.isNaN(num)) {
+        showDashboardWarning('Invalid number for realized P&L override.', 'Close position');
+        return;
+      }
+      payload.realizedPnlUsd = num;
+    } else {
+      const snap = Number(closeBtn.getAttribute('data-mtm-usd'));
+      payload.realizedPnlUsd = Number.isFinite(snap) ? snap : 0;
+    }
+    if (mode === 'real') {
+      const w = walletSession();
+      if (w.walletId) payload.walletId = w.walletId;
+      if (w.password) payload.password = w.password;
+    }
+    try {
+      const data = await readJson(`/api/positions/${encodeURIComponent(tid)}/close`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (data?.realizedPnlUsd != null && Number.isFinite(Number(data.realizedPnlUsd))) {
+        const vs = data.venueSteps || {};
+        const parts = [];
+        if (mode === 'real') {
+          if (vs.twilight) parts.push(vs.twilight.ok ? 'Twilight: closed' : 'Twilight: attempted');
+          if (vs.unlockCloseOrder && vs.unlockCloseOrder.ok === false) {
+            const u = vs.unlockCloseOrder;
+            const msg = String(u.stderr || u.stdout || 'relayer error').trim().slice(0, 400);
+            showDashboardWarning(
+              `After close, unlock-close-order did not succeed (exit ${u.code}): ${msg}. If rotation failed, wait for settlement, use ZkOS inspector → Unlock settled close, then Transfer 100%.`,
+              'Close position'
+            );
+          }
+          if (vs.cex?.ok) parts.push(vs.cex.orderId ? `CEX: order ${vs.cex.orderId}` : 'CEX: flattened');
+          const zr = vs.zkRotate;
+          const closedIdx = Number(vs.twilight?.accountIndex);
+          if (zr?.ok && zr.newAccountIndexHint != null && Number.isFinite(closedIdx) && zr.newAccountIndexHint > closedIdx) {
+            const idxEl = document.getElementById('zkos-strategy-index');
+            if (idxEl) {
+              idxEl.value = String(zr.newAccountIndexHint);
+              rebuildZkosActiveAccountDropdown();
+              updateZkosTradeAccountBanner();
+            }
+            parts.push(
+              `ZkOS: rotated to index ${zr.newAccountIndexHint} (field updated — Save default index in step 3b to persist .env)`
+            );
+          } else if (zr?.ok) {
+            parts.push('ZkOS: transfer ran — use List ZkOS accounts if the new index is not obvious, then set the field / save .env.');
+          } else if (zr?.skipped && Array.isArray(zr.reasons) && zr.reasons.length) {
+            parts.push(`ZkOS: ${zr.reasons.join(' ')}`);
+          } else if (zr && zr.skipped !== true && zr.ok === false) {
+            showDashboardWarning(
+              `Twilight closed but ZkOS transfer failed: ${zr.error || zr.stderr || zr.stdout || 'unknown'}. When the account is ready, use step 3b Transfer at 100% from index ${Number.isFinite(closedIdx) ? closedIdx : '?'}.`,
+              'Close position'
+            );
+          }
+        }
+        parts.push(`Realized (ledger) ${fmtUsd(data.realizedPnlUsd)}${useMtm ? ' · MTM snapshot (Twilight leg)' : ''}`);
+        showDashboardSuccess(parts.join(' · '), 'Close position');
+      }
+      await refreshPnl({ userAction: true });
+      await refreshTradeDesk({ userAction: false });
+      await refreshZkosAccountAvailability();
+      renderStrategiesTableFromCache();
+    } catch (e) {
+      showDashboardError(errMsg(e), 'Close position');
+    }
+    return;
   }
+
+  const row = ev.target.closest('tr.pos-open-row');
+  if (!row) return;
+  const tid = row.getAttribute('data-pos-tid');
+  if (!tid) return;
+  const o = lastOpenPositions.find((x) => x.tradeId === tid);
+  if (o) openOpenPositionDetailsModal(o);
 });
 
 document.getElementById('btn-pnl-refresh')?.addEventListener('click', () => refreshPnl({ userAction: true }));

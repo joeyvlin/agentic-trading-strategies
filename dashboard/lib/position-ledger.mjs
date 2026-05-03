@@ -3,6 +3,7 @@ import path from 'path';
 import { getStrategyApiEnv } from './env-store.mjs';
 import { getRepoRoot } from './persistence.mjs';
 import { fetchMarket } from '../../agents/twilight-strategy-monitor/src/strategyClient.js';
+import { cexPositionSide, cexSizeUsd, cexVenue } from '../../agents/twilight-strategy-monitor/src/normalize.js';
 
 function ledgerPath() {
   return path.join(getRepoRoot(), 'data', 'positions.json');
@@ -67,6 +68,12 @@ export function appendOpenPosition({ transaction, strategy, marketSnapshot }) {
     Number(strategy.twilightSize) ||
     0;
 
+  const twilightSizeUsd = Number(strategy.twilightSize) || 0;
+  const twilightLev = strategy.twilightLeverage;
+  const venue = cexVenue(strategy);
+  const cexPos = cexPositionSide(strategy);
+  const cexUsd = cexSizeUsd(strategy);
+
   const ex = transaction.execution || {};
   let twilightAccountIndex = null;
   if (ex.twilight?.completed && ex.twilight.accountIndex != null) {
@@ -96,6 +103,11 @@ export function appendOpenPosition({ transaction, strategy, marketSnapshot }) {
     strategyName: strategy.name,
     mode: transaction.mode,
     twilightPosition: strategy.twilightPosition || null,
+    twilightLeverage: twilightLev != null && twilightLev !== '' ? Number(twilightLev) : null,
+    twilightSizeUsd,
+    cexVenue: venue,
+    cexPosition: cexPos != null ? String(cexPos) : null,
+    cexNotionalUsd: cexUsd,
     entryBtcPrice: Number(marketSnapshot?.btcPrice) || 0,
     exposureUsd,
     notionalUsd: Number(transaction.totalNotionalUsd) || 0,

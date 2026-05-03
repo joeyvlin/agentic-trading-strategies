@@ -1026,3 +1026,17 @@ pre.out-compact {
   margin-top: 1.25rem;
   justify-content: flex-end;
 }
+
+/* Agent P&L: click row for position details (Close stays separate) */
+tr.pos-open-row {
+  cursor: pointer;
+}
+tr.pos-open-row:hover td {
+  background: rgba(196, 163, 90, 0.08);
+}
+tr.pos-open-row td.pos-close-cell {
+  cursor: default;
+}
+tr.pos-open-row td.pos-close-cell:hover {
+  background: transparent;
+}
