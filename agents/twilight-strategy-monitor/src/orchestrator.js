@@ -1,5 +1,5 @@
 import { fetchStrategies, fetchMarket, fetchStrategyById } from './strategyClient.js';
-import { cexVenue, pickTopStrategy, scaleStrategyToTargetTotalNotional } from './normalize.js';
+import { cexVenue, pickTopStrategy, scaleStrategyToTargetTotalNotional, cexSizeUsd } from './normalize.js';
 import { evaluateRisk } from './riskEngine.js';
 import { addLogicalTrade } from './portfolio.js';
 import { executeSimulation } from './executor/simulation.js';
@@ -56,7 +56,12 @@ function buildExecutionSummary(trade) {
     const venue = cexVenue(strategy) || 'cex';
     const o = raw.cex.order;
     const openSide = String(o.side || '').toLowerCase();
-    const filledAmt = Number(o.filled) || Number(o.amount) || 0;
+    let filledAmt = Number(o.filled) || Number(o.amount) || 0;
+    // Bybit inverse: flatten must use contract count (same unit as open), not BTC-equivalent fills.
+    if (venue === 'bybit' && raw.cex.bybitContracts != null) {
+      const c = Number(raw.cex.bybitContracts);
+      if (Number.isFinite(c) && c > 0) filledAmt = c;
+    }
     const flattenSide = openSide === 'buy' ? 'sell' : 'buy';
     summary.cex = {
       completed: true,
@@ -212,7 +217,7 @@ export async function runOneCycleForStrategy({
       const before = strategy;
       strategy = scaleStrategyToTargetTotalNotional(strategy, t);
       logger.info(
-        `Manual run scaled notionals to $${t.toFixed(2)} total (template was twilight ${before.twilightSize} + cex ${before.binanceSize})`
+        `Manual run scaled notionals to $${t.toFixed(2)} total (template was twilight ${before.twilightSize} + cex ${cexSizeUsd(before)})`
       );
     }
   }

@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { cexVenue } from '../normalize.js';
+import { cexVenue, cexPositionSide, cexSizeUsd } from '../normalize.js';
 
 /**
  * Simulation: no exchange or relayer calls. Records a logical trade for portfolio tracking.
@@ -20,9 +20,9 @@ export async function executeSimulation({ strategy, notionals, market, logger })
     cex: venue
       ? {
           venue,
-          side: strategy.binancePosition,
-          sizeUsd: strategy.binanceSize,
-          lev: strategy.binanceLeverage,
+          side: cexPositionSide(strategy),
+          sizeUsd: cexSizeUsd(strategy),
+          lev: strategy.isBybitStrategy ? strategy.bybitLeverage : strategy.binanceLeverage,
         }
       : null,
     notionals,

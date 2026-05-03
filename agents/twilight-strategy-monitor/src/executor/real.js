@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import { spawn } from 'child_process';
 import ccxt from 'ccxt';
 import { resolveBinanceCredsForReal, resolveBybitCredsForReal } from '../cexFileCreds.js';
-import { cexVenue, estimateVenueNotionals } from '../normalize.js';
+import { cexVenue, estimateVenueNotionals, cexPositionSide, cexSizeUsd } from '../normalize.js';
 
 function btcPriceFromMarket(market, venue) {
   const p = market?.prices;
@@ -380,8 +380,8 @@ export async function executeReal({ strategy, notionals, market, logger, relayer
   if (venue) {
     results.cex = await placeCexMarketOrder({
       venue,
-      positionSide: strategy.binancePosition,
-      sizeUsd: Number(strategy.binanceSize),
+      positionSide: cexPositionSide(strategy),
+      sizeUsd: cexSizeUsd(strategy),
       market,
       logger,
     });

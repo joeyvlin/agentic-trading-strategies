@@ -2,6 +2,26 @@
  * Derive venue and notionals from Strategy API rows (see twilight-strategy-tester api/lib/strategies.js).
  */
 
+/** USD notional on the CEX leg (Strategy API uses `bybitSize` when `isBybitStrategy`). */
+export function cexSizeUsd(strategy) {
+  if (!strategy) return 0;
+  if (strategy.isBybitStrategy) {
+    const y = Number(strategy.bybitSize);
+    if (Number.isFinite(y) && y > 0) return y;
+  }
+  return Number(strategy.binanceSize) || 0;
+}
+
+/** Long/short on the CEX leg (`bybitPosition` vs `binancePosition`). */
+export function cexPositionSide(strategy) {
+  if (!strategy) return null;
+  if (strategy.isBybitStrategy) {
+    const y = strategy.bybitPosition;
+    if (y != null && String(y).trim() !== '' && String(y).toLowerCase() !== 'null') return y;
+  }
+  return strategy.binancePosition;
+}
+
 export function cexVenue(strategy) {
   if (strategy.isBybitStrategy) return 'bybit';
   const hasBinance =
@@ -14,18 +34,18 @@ export function cexVenue(strategy) {
 
 export function estimateVenueNotionals(strategy) {
   const tw = Number(strategy.twilightSize) || 0;
-  const bin = Number(strategy.binanceSize) || 0;
   const venue = cexVenue(strategy);
+  const cex = venue === 'bybit' ? cexSizeUsd(strategy) : venue === 'binance' ? Number(strategy.binanceSize) || 0 : 0;
   return {
     twilight: tw,
-    binance: venue === 'binance' ? bin : 0,
-    bybit: venue === 'bybit' ? bin : 0,
-    total: tw + bin,
+    binance: venue === 'binance' ? cex : 0,
+    bybit: venue === 'bybit' ? cex : 0,
+    total: tw + cex,
   };
 }
 
 /**
- * Scale twilightSize and binanceSize so venue notionals sum to targetTotalUsd (same leg mix as template).
+ * Scale twilightSize and CEX leg notionals (binanceSize and/or bybitSize) so total USD matches targetTotalUsd.
  * If template total is 0 or target invalid, returns a shallow copy of strategy unchanged.
  */
 export function scaleStrategyToTargetTotalNotional(strategy, targetTotalUsd) {
@@ -42,6 +62,7 @@ export function scaleStrategyToTargetTotalNotional(strategy, targetTotalUsd) {
     ...strategy,
     twilightSize: (Number(strategy.twilightSize) || 0) * scale,
     binanceSize: (Number(strategy.binanceSize) || 0) * scale,
+    bybitSize: (Number(strategy.bybitSize) || 0) * scale,
   };
 }
 
