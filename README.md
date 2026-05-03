@@ -22,6 +22,15 @@ A collection of **AI agents** for systematic trading. Agents combine market sign
 
 See **[agents/twilight-strategy-monitor/README.md](agents/twilight-strategy-monitor/README.md)** for **real execution** mode, exchange keys, and `relayer-cli` options.
 
+### Twilight skill docs (upstream mirrors)
+
+Verbatim copies from [twilight-project/agentskill](https://github.com/twilight-project/agentskill) and [twilight-project/nyks-wallet/docs](https://github.com/twilight-project/nyks-wallet/tree/main/docs) live under **`skills/twilight-protocol-agentskill/`**. From the repo root:
+
+```bash
+npm run skills:check   # exit 1 if local files drift from upstream main (CI uses this weekly)
+npm run skills:apply   # overwrite mirrors + refresh SHAs in skills/.../UPSTREAM_SYNC.md
+```
+
 ### Web dashboard
 
 Browser UI to start/stop the monitor, edit YAML config, run **`Run simulation once`**, and inspect transactions / estimated P&amp;L:

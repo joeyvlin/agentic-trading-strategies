@@ -1,0 +1,12 @@
+{
+  "name": "agentic-trading-strategies",
+  "private": true,
+  "description": "Root scripts for repo-wide maintenance (agents live under agents/).",
+  "scripts": {
+    "skills:check": "node scripts/sync-twilight-skills.mjs --check",
+    "skills:apply": "node scripts/sync-twilight-skills.mjs --apply"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

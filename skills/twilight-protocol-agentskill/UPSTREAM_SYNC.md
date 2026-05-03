@@ -13,9 +13,18 @@ Mirrors in this folder are copied verbatim from:
 
 `SKILL.md` is a **local Cursor index** (frontmatter + links); it is not overwritten by upstream.
 
-Last sync (commit that touched this doc): see git history for `UPSTREAM_SYNC.md` / skill files.
+## Automation
 
-Commits used at last sync:
+From the **repository root**:
+
+```bash
+node scripts/sync-twilight-skills.mjs --check   # CI: exit 1 if mirrors drift from main branch
+node scripts/sync-twilight-skills.mjs --apply   # copy upstream files; refresh SHAs below
+```
+
+<!-- SYNC_SHAS_START -->
+Commits last verified (UTC 2026-05-03T18:18:19.738Z, apply):
 
 - `twilight-project/agentskill`: `67e1aa17f9917e602000947e18406815fb98f6b8`
 - `twilight-project/nyks-wallet`: `1e770b53fae6ccf996a8a7e07c96361bd5e18e27`
+<!-- SYNC_SHAS_END -->
