@@ -519,9 +519,12 @@ export function registerRelayerRoutes(app, { requireToken }) {
         error: 'Required: accountIndex, side (long|short), entryPrice, leverage',
       });
     }
-    const argv = [
-      'order',
-      'open-trade',
+    const { walletId, password } = creds(req.body || {});
+    const argv = ['order', 'open-trade'];
+    if (walletId && password) {
+      argv.push('--wallet-id', walletId, '--password', password);
+    }
+    argv.push(
       '--account-index',
       String(accountIndex),
       '--side',
@@ -532,8 +535,8 @@ export function registerRelayerRoutes(app, { requireToken }) {
       String(leverage),
       '--order-type',
       orderType ? String(orderType).toUpperCase() : 'MARKET',
-      '--json',
-    ];
+      '--json'
+    );
     if (noWait === true) argv.push('--no-wait');
     jsonHandler(res, runRelayerCli(argv, { cwd: repoRoot }).then((r) => ({ ok: r.ok, ...r })));
   });
@@ -564,12 +567,13 @@ export function registerRelayerRoutes(app, { requireToken }) {
     if (accountIndex == null) {
       return res.status(400).json({ error: 'accountIndex is required' });
     }
-    jsonHandler(
-      res,
-      runRelayerCli(['order', 'cancel-trade', '--account-index', String(accountIndex), '--json'], {
-        cwd: repoRoot,
-      }).then((r) => ({ ok: r.ok, ...r }))
-    );
+    const { walletId, password } = creds(req.body || {});
+    const argv = ['order', 'cancel-trade'];
+    if (walletId && password) {
+      argv.push('--wallet-id', walletId, '--password', password);
+    }
+    argv.push('--account-index', String(accountIndex), '--json');
+    jsonHandler(res, runRelayerCli(argv, { cwd: repoRoot }).then((r) => ({ ok: r.ok, ...r })));
   });
 
   app.post('/api/relayer/order/unlock-close-order', requireToken, (req, res) => {
@@ -579,13 +583,12 @@ export function registerRelayerRoutes(app, { requireToken }) {
     if (accountIndex == null || accountIndex === '') {
       return res.status(400).json({ error: 'accountIndex is required' });
     }
-    const argv = [
-      'order',
-      'unlock-close-order',
-      '--account-index',
-      String(accountIndex),
-      '--json',
-    ];
+    const { walletId, password } = creds(req.body || {});
+    const argv = ['order', 'unlock-close-order'];
+    if (walletId && password) {
+      argv.push('--wallet-id', walletId, '--password', password);
+    }
+    argv.push('--account-index', String(accountIndex), '--json');
     jsonHandler(res, runRelayerCli(argv, { cwd: repoRoot }).then((r) => ({ ok: r.ok, ...r })));
   });
 
@@ -596,13 +599,12 @@ export function registerRelayerRoutes(app, { requireToken }) {
     if (accountIndex == null || accountIndex === '') {
       return res.status(400).json({ error: 'accountIndex is required' });
     }
-    const argv = [
-      'order',
-      'unlock-failed-order',
-      '--account-index',
-      String(accountIndex),
-      '--json',
-    ];
+    const { walletId, password } = creds(req.body || {});
+    const argv = ['order', 'unlock-failed-order'];
+    if (walletId && password) {
+      argv.push('--wallet-id', walletId, '--password', password);
+    }
+    argv.push('--account-index', String(accountIndex), '--json');
     jsonHandler(res, runRelayerCli(argv, { cwd: repoRoot }).then((r) => ({ ok: r.ok, ...r })));
   });
 }

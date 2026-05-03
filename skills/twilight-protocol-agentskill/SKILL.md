@@ -28,7 +28,7 @@ Upstream sources:
 
 - **Twilight**: 0% trading fees and 0% funding vs centralized venues — strategies often exploit that spread.
 - **Inverse perpetuals**: margin in BTC (sats); PnL in sats.
-- **ZkOS accounts**: Coin (idle) / Memo (order active). After a settled close, **rotate** the account before a new open (`zkaccount transfer --from <index>`), except unfilled cancelled limits.
+- **ZkOS accounts**: Coin (idle) / Memo (order active). After a settled close, **`unlock-close-order`** (if needed) then **`zkaccount transfer --account-index <index>`** before a new open, except unfilled cancelled limits.
 - **Wallet vs ZkOS**: Create/import the **NYKS wallet** first; the first **`zkaccount fund`** moves on-chain sats into a ZkOS account (no separate “create empty ZkOS” step). See [reference-trader.md](reference-trader.md).
 - **Limits**: max leverage 50x; max position ~20% of pool equity (confirm via `market market-stats` or API).
 
@@ -54,7 +54,7 @@ Full endpoints, filters, and categories: [reference-strategies.md](reference-str
 ## Relayer CLI (minimal)
 
 - Binary: `relayer-cli` from [nyks-wallet](https://github.com/twilight-project/nyks-wallet) (build produces `target/release/relayer-cli`).
-- Typical flow: `market price` / `market market-stats` → `wallet balance` → `zkaccount fund` → `order open-trade` → `order close-trade` → `zkaccount transfer --from <index>`.
+- Typical flow: `market price` / `market market-stats` → `wallet balance` → `zkaccount fund` → `order open-trade` → `order close-trade` → `order unlock-close-order` (when applicable) → `zkaccount transfer --account-index <index>`.
 
 Full commands, `.env` samples, and constraints: [reference-trader.md](reference-trader.md).  
 Mainnet BTC onboarding (register/deposit/withdraw): [reference-btc-onboarding.md](reference-btc-onboarding.md).

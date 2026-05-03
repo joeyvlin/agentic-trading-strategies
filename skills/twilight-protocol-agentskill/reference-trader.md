@@ -252,7 +252,7 @@ These are **different** things; the docs and **Typical Trade Flow** below list t
 1. **NYKS / Twilight wallet** — created or imported with `wallet create` / `wallet import`. Holds keys and your **on-chain** balance. **Do this first.**
 2. **ZkOS trading account** — there is **no** separate CLI step to “create an empty ZkOS account” before trading. The first time you run **`zkaccount fund --amount …`**, the relayer moves **on-chain sats** into a **new** ZkOS account (commonly index **0**). So **fund = create/populate the first ZkOS account** for that wallet.
 3. **Testnet** — use the faucet so `wallet balance` shows spendable sats, then fund ZkOS.
-4. **After a settled close** — rotate with `zkaccount transfer --from <INDEX>` before opening again (see **Account Reuse After Closing**).
+4. **After a settled close** — call `order unlock-close-order` if needed, then rotate with `zkaccount transfer --account-index <INDEX>` before opening again (see **Account Reuse After Closing**).
 
 The dashboard **ZkOS (step 3b)** panel mirrors this: refresh on-chain balance → fund (optionally a % of spendable) → list accounts → set `TWILIGHT_ACCOUNT_INDEX` → rotate when needed.
 
@@ -266,11 +266,11 @@ relayer-cli zkaccount fund --amount-btc 0.001
 relayer-cli zkaccount withdraw --account <INDEX> --amount 5000
 
 # Transfer (rotate) to a fresh account
-relayer-cli zkaccount transfer --from <INDEX>
+relayer-cli zkaccount transfer --account-index <INDEX>
 
 # Split one account into multiple
-relayer-cli zkaccount split --from <INDEX> --balances "2000,3000,5000"
-relayer-cli zkaccount split --from <INDEX> --balances-mbtc "0.02,0.03"
+relayer-cli zkaccount split --account-index <INDEX> --balances "2000,3000,5000"
+relayer-cli zkaccount split --account-index <INDEX> --balances-mbtc "0.02,0.03"
 ```
 
 ## Order Commands
@@ -340,7 +340,7 @@ After closing/settling a trade, the account must be **rotated** before opening a
 
 ```bash
 # Option A: Rotate to fresh account (recommended)
-relayer-cli zkaccount transfer --from <OLD_INDEX>
+relayer-cli zkaccount transfer --account-index <OLD_INDEX>
 # → Creates new account at next index with same balance
 
 # Option B: Withdraw + re-fund
@@ -413,8 +413,11 @@ relayer-cli portfolio summary
 # 6. Close
 relayer-cli order close-trade --account-index 0
 
-# 7. Rotate for next trade
-relayer-cli zkaccount transfer --from 0
+# 7. After settlement, sync UTXO back to Coin (required before transfer in many cases)
+relayer-cli order unlock-close-order --account-index 0
+
+# 8. Rotate for next trade
+relayer-cli zkaccount transfer --account-index 0
 # Now use next index for the new trade
 ```
 
@@ -429,7 +432,7 @@ relayer-cli order close-trade --account-index 0 --no-wait
 
 - **Inverse perpetuals**: Margin is in sats (BTC). Position value = margin × leverage. PnL in sats.
 - **ZkOS accounts**: Privacy-preserving with two states — **Coin** (idle) and **Memo** (order active). Full balance committed per order.
-- **Account rotation**: Must rotate after settle. Use `zkaccount transfer --from`.
+- **Account rotation**: After a settled close, run `unlock-close-order` if the account is still Memo, then `zkaccount transfer --account-index <INDEX>`.
 - **Max leverage**: 50x. Max position: 20% of pool equity (check `market market-stats`).
 - **Fees**: 4% filled on market, 2% filled on limit, 4% settled on market, 2% settled on limit.
 - **`--no-wait`**: Returns after relayer confirms, skips chain UTXO sync. Account syncs lazily on next use.

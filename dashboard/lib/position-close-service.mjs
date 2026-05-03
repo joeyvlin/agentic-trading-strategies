@@ -138,7 +138,42 @@ export async function executeFullPositionClose(tradeId, opts = {}) {
         );
       }
 
-      /** After a settled close, move ZkOS balance to a fresh index (same as manual 100% transfer). */
+      /**
+       * After close-trade, relayer may still hold the account in Memo until settlement is synced.
+       * `zkaccount transfer` requires Coin — run unlock-close-order first (no-op / soft-fail if already Coin).
+       */
+      let unlockR = null;
+      try {
+        unlockR = await runRelayerCli(
+          [
+            'order',
+            'unlock-close-order',
+            '--wallet-id',
+            walletId,
+            '--password',
+            password,
+            '--account-index',
+            String(twilightAccountIndex),
+            '--json',
+          ],
+          { cwd: getRepoRoot(), timeoutMs: 180000 }
+        );
+      } catch (e) {
+        unlockR = {
+          ok: false,
+          code: -1,
+          stdout: '',
+          stderr: e?.message || String(e),
+        };
+      }
+      venueSteps.unlockCloseOrder = {
+        ok: unlockR.ok,
+        code: unlockR.code,
+        stdout: unlockR.stdout,
+        stderr: unlockR.stderr,
+      };
+
+      /** After close + unlock, move ZkOS balance to a fresh index (same as manual 100% transfer). */
       if (zkDashboardTransferAllowed() && autoZkRotateAfterCloseEnabled()) {
         try {
           const tr = await runRelayerCli(

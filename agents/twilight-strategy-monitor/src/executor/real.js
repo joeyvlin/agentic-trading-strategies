@@ -364,6 +364,7 @@ export async function executeReal({ strategy, notionals, market, logger, relayer
       lev,
       '--order-type',
       'MARKET',
+      '--json',
     ];
     results.twilight = await runRelayerCli(args, logger, relayerEnv, {
       cwd: relayerCwd,

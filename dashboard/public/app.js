@@ -2512,6 +2512,14 @@ document.getElementById('positions-open-body')?.addEventListener('click', async 
       const parts = [];
       if (mode === 'real') {
         if (vs.twilight) parts.push(vs.twilight.ok ? 'Twilight: closed' : 'Twilight: attempted');
+        if (vs.unlockCloseOrder && vs.unlockCloseOrder.ok === false) {
+          const u = vs.unlockCloseOrder;
+          const msg = String(u.stderr || u.stdout || 'relayer error').trim().slice(0, 400);
+          showDashboardWarning(
+            `After close, unlock-close-order did not succeed (exit ${u.code}): ${msg}. If rotation failed, wait for settlement, use ZkOS inspector → Unlock settled close, then Transfer 100%.`,
+            'Close position'
+          );
+        }
         if (vs.cex?.ok) parts.push(vs.cex.orderId ? `CEX: order ${vs.cex.orderId}` : 'CEX: flattened');
         const zr = vs.zkRotate;
         const closedIdx = Number(vs.twilight?.accountIndex);
@@ -3298,8 +3306,14 @@ document.getElementById('btn-zkos-insp-close')?.addEventListener('click', async 
 document.getElementById('btn-zkos-insp-cancel')?.addEventListener('click', async () => {
   const row = getSelectedZkOsRow();
   if (!row) return;
+  const creds = walletSession();
+  if (!creds.walletId || !creds.password) {
+    showDashboardWarning('Wallet + password required (step 1).', 'ZkOS');
+    return;
+  }
   if (!confirm(`Cancel pending trade on ZkOS index ${row.index}?`)) return;
   await runZkosInspectorRelayerToOut('Cancel trade', '/api/relayer/order/cancel-trade', {
+    ...creds,
     accountIndex: row.index,
   });
   await runZkosListAccounts({ userAction: false, silentOut: true });
@@ -3309,11 +3323,16 @@ document.getElementById('btn-zkos-insp-cancel')?.addEventListener('click', async
 document.getElementById('btn-zkos-insp-unlock-close')?.addEventListener('click', async () => {
   const row = getSelectedZkOsRow();
   if (!row) return;
+  const creds = walletSession();
+  if (!creds.walletId || !creds.password) {
+    showDashboardWarning('Wallet + password required (step 1).', 'ZkOS');
+    return;
+  }
   if (!confirm(`Unlock settled close on ZkOS index ${row.index}?`)) return;
   await runZkosInspectorRelayerToOut(
     'Unlock settled close',
     '/api/relayer/order/unlock-close-order',
-    { accountIndex: row.index }
+    { ...creds, accountIndex: row.index }
   );
   await runZkosListAccounts({ userAction: false, silentOut: true });
   syncZkosInspector();
@@ -3322,11 +3341,16 @@ document.getElementById('btn-zkos-insp-unlock-close')?.addEventListener('click',
 document.getElementById('btn-zkos-insp-unlock-failed')?.addEventListener('click', async () => {
   const row = getSelectedZkOsRow();
   if (!row) return;
+  const creds = walletSession();
+  if (!creds.walletId || !creds.password) {
+    showDashboardWarning('Wallet + password required (step 1).', 'ZkOS');
+    return;
+  }
   if (!confirm(`Unlock failed order on ZkOS index ${row.index}?`)) return;
   await runZkosInspectorRelayerToOut(
     'Unlock failed order',
     '/api/relayer/order/unlock-failed-order',
-    { accountIndex: row.index }
+    { ...creds, accountIndex: row.index }
   );
   await runZkosListAccounts({ userAction: false, silentOut: true });
   syncZkosInspector();
@@ -3603,6 +3627,7 @@ document.getElementById('btn-relayer-open')?.addEventListener('click', () => {
     leverage: document.getElementById('relayer-ot-lev').value.trim(),
     orderType: 'MARKET',
     noWait: document.getElementById('relayer-ot-nowait').checked,
+    ...walletSession(),
   });
 });
 
@@ -3617,18 +3642,21 @@ document.getElementById('btn-relayer-close')?.addEventListener('click', () => {
 document.getElementById('btn-relayer-cancel')?.addEventListener('click', () => {
   relayerPost('/api/relayer/order/cancel-trade', {
     accountIndex: document.getElementById('relayer-close-acc').value.trim(),
+    ...walletSession(),
   });
 });
 
 document.getElementById('btn-relayer-unlock-close')?.addEventListener('click', () => {
   relayerPost('/api/relayer/order/unlock-close-order', {
     accountIndex: document.getElementById('relayer-close-acc').value.trim(),
+    ...walletSession(),
   });
 });
 
 document.getElementById('btn-relayer-unlock-failed')?.addEventListener('click', () => {
   relayerPost('/api/relayer/order/unlock-failed-order', {
     accountIndex: document.getElementById('relayer-close-acc').value.trim(),
+    ...walletSession(),
   });
 });
 
