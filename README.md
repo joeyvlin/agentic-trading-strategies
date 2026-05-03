@@ -27,7 +27,7 @@ See **[agents/twilight-strategy-monitor/README.md](agents/twilight-strategy-moni
 Verbatim copies from [twilight-project/agentskill](https://github.com/twilight-project/agentskill) and [twilight-project/nyks-wallet/docs](https://github.com/twilight-project/nyks-wallet/tree/main/docs) live under **`skills/twilight-protocol-agentskill/`**. From the repo root:
 
 ```bash
-npm run skills:check   # exit 1 if local files drift from upstream main
+npm run skills:check   # exit 1 if local files drift from upstream main (same as CI workflow)
 npm run skills:apply   # overwrite mirrors + refresh SHAs in skills/.../UPSTREAM_SYNC.md
 ```
 
