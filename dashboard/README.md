@@ -29,6 +29,7 @@ Open **http://127.0.0.1:3847** (default). The API binds to **localhost only** fo
 | `DASHBOARD_TOKEN` | _(empty)_ | If set, all `/api/*` routes except `/api/health` require header `x-dashboard-token` |
 | `STRATEGY_API_KEY` | — | From repo `.env` (loaded by the monitor service) |
 | `CONFIRM_REAL_TRADING` | — | Set via **Twilight wallet → Allow real trading** (writes `.env`) or `YES` manually if yaml `execution.mode` is `real` |
+| `MONITOR_RESTART_BACKOFF_MS` | `15000` | After a failed poll cycle (while monitor is still “on”), clear the timer, wait this long, then restart the interval and run an immediate poll. Skipped when the user clicks **Stop monitor**. Minimum enforced in code: `3000`. |
 
 If you set `DASHBOARD_TOKEN`, paste the same value into the **Dashboard token** field in the UI and click **Store** (saved in `localStorage`).
 

@@ -82,11 +82,23 @@ export function createMonitorService() {
 
   let timer = null;
   let running = false;
+  /** True only after `stop()` — skips auto-recovery restarts. */
+  let userStopRequested = false;
   let pollIntervalMs = 60000;
   let lastCycle = null;
   let lastError = null;
   let lastErrorStack = null;
   let startedAt = null;
+  let tickInFlight = false;
+  let recoveryTimeout = null;
+  let recoveryInProgress = false;
+  /** True while a post-failure timer restart is scheduled or running (avoids double setInterval on start). */
+  let pendingMonitorRecovery = false;
+
+  const monitorRestartBackoffMs = Math.max(
+    3000,
+    Number(process.env.MONITOR_RESTART_BACKOFF_MS) || 15000
+  );
 
   async function tick(executionModeOverride) {
     lastError = null;
@@ -127,6 +139,89 @@ export function createMonitorService() {
       const detail = lastErrorStack ? `${lastError}\n\n${lastErrorStack}` : lastError;
       logger.error(detail, e);
       throw e;
+    }
+  }
+
+  function clearRecoverySchedule() {
+    if (recoveryTimeout) {
+      clearTimeout(recoveryTimeout);
+      recoveryTimeout = null;
+    }
+    pendingMonitorRecovery = false;
+  }
+
+  /**
+   * If a poll cycle threw while the user still wants the monitor on, drop the old interval and start a fresh one
+   * after a short backoff (debounced). Does nothing after `stop()`.
+   */
+  function scheduleMonitorRestartAfterFailure(reason) {
+    if (userStopRequested || !running || recoveryInProgress) return;
+    clearRecoverySchedule();
+    if (timer) {
+      clearInterval(timer);
+      timer = null;
+    }
+    pendingMonitorRecovery = true;
+    logger.warn(
+      `[monitor] Poll cycle failed; will restart monitor timer after ${monitorRestartBackoffMs}ms unless stopped. (${reason})`
+    );
+    recoveryTimeout = setTimeout(() => {
+      recoveryTimeout = null;
+      if (userStopRequested || !running) {
+        pendingMonitorRecovery = false;
+        return;
+      }
+      recoveryInProgress = true;
+      try {
+        if (timer) {
+          clearInterval(timer);
+          timer = null;
+        }
+        let cfg;
+        try {
+          cfg = loadAgentConfig(logger);
+          pollIntervalMs = cfg.pollIntervalMs;
+        } catch (e) {
+          logger.error(`[monitor] Recovery: could not reload config: ${e?.message || e}`);
+          pollIntervalMs = pollIntervalMs || 60000;
+        }
+        if (pollIntervalMs <= 0) {
+          running = false;
+          startedAt = null;
+          pendingMonitorRecovery = false;
+          logger.warn('[monitor] Recovery aborted: pollIntervalMs is 0 (single-shot mode).');
+          return;
+        }
+        const run = () => {
+          void runMonitorPollCycle();
+        };
+        timer = setInterval(run, pollIntervalMs);
+        pendingMonitorRecovery = false;
+        logger.info('[monitor] Timer restarted after failure; running immediate poll.');
+        void run();
+      } catch (e) {
+        logger.error(`[monitor] Recovery failed: ${e?.message || e}`);
+        pendingMonitorRecovery = false;
+      } finally {
+        recoveryInProgress = false;
+      }
+    }, monitorRestartBackoffMs);
+  }
+
+  async function runMonitorPollCycle() {
+    if (!running || userStopRequested) return;
+    if (tickInFlight) {
+      logger.warn('[monitor] Skipping tick: previous cycle still in progress.');
+      return;
+    }
+    tickInFlight = true;
+    try {
+      await tick();
+    } catch (e) {
+      const msg = e?.message || String(e);
+      scheduleMonitorRestartAfterFailure(msg);
+    } finally {
+      tickInFlight = false;
     }
   }
 
@@ -172,16 +267,21 @@ export function createMonitorService() {
             'Real mode requires allowing real trading: enable it in Twilight wallet (step 1) or set CONFIRM_REAL_TRADING=YES in .env.',
         };
       }
+      userStopRequested = false;
+      clearRecoverySchedule();
       pollIntervalMs = config.pollIntervalMs;
       running = true;
       startedAt = new Date().toISOString();
 
       try {
-        const run = () => tick().catch(() => {});
-        await run();
-        if (pollIntervalMs > 0) {
+        const run = () => {
+          void runMonitorPollCycle();
+        };
+        await runMonitorPollCycle();
+        if (pollIntervalMs > 0 && !timer && !pendingMonitorRecovery) {
           timer = setInterval(run, pollIntervalMs);
-        } else {
+        }
+        if (pollIntervalMs <= 0) {
           running = false;
           startedAt = null;
         }
@@ -194,6 +294,9 @@ export function createMonitorService() {
     },
 
     stop: () => {
+      userStopRequested = true;
+      clearRecoverySchedule();
+      recoveryInProgress = false;
       if (timer) {
         clearInterval(timer);
         timer = null;
