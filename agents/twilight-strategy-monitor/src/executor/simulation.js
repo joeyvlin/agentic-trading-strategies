@@ -4,7 +4,7 @@ import { cexVenue, cexPositionSide, cexSizeUsd } from '../normalize.js';
 /**
  * Simulation: no exchange or relayer calls. Records a logical trade for portfolio tracking.
  */
-export async function executeSimulation({ strategy, notionals, market, logger }) {
+export async function executeSimulation({ strategy, notionals, market, logger, automation: _automation }) {
   const id = randomUUID();
   const venue = cexVenue(strategy);
 

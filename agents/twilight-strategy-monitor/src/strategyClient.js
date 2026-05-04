@@ -50,11 +50,22 @@ async function withCanonicalFallback(pathname, baseUrl, apiKey, logger) {
   }
 }
 
+/** Query params supported by GET /api/strategies (desk-only keys like cexVenue are omitted). */
+const STRATEGY_API_LIST_PARAMS = new Set([
+  'profitable',
+  'limit',
+  'minApy',
+  'category',
+  'risk',
+]);
+
 export async function fetchStrategies(baseUrl, apiKey, filters, logger) {
   const u = new URL('/api/strategies', normalizedBase(baseUrl));
   const params = new URLSearchParams();
   Object.entries(filters || {}).forEach(([k, v]) => {
+    if (!STRATEGY_API_LIST_PARAMS.has(k)) return;
     if (v === undefined || v === null || v === '') return;
+    if (k === 'risk' && String(v).trim().toLowerCase() === 'any') return;
     params.set(k, String(v));
   });
   u.search = params.toString();

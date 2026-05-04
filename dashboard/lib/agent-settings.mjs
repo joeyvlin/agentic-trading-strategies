@@ -19,6 +19,7 @@ export function readAgentSettings() {
     strategyFilters: doc.strategyFilters || { profitable: true, limit: 5 },
     risk: doc.risk || {},
     execution: doc.execution || { mode: 'simulation' },
+    automation: doc.automation || {},
   };
 }
 
@@ -32,12 +33,23 @@ export function writeAgentSettings(partial) {
   if (partial.pollIntervalMs != null) doc.pollIntervalMs = Number(partial.pollIntervalMs);
   if (partial.strategyFilters && typeof partial.strategyFilters === 'object') {
     doc.strategyFilters = { ...doc.strategyFilters, ...partial.strategyFilters };
+    const r = doc.strategyFilters.risk;
+    if (r === '' || r == null || String(r).trim().toLowerCase() === 'any') {
+      delete doc.strategyFilters.risk;
+    }
+    const al = doc.strategyFilters.riskAllowlist;
+    if (al === '' || al == null || (typeof al === 'string' && !al.trim())) {
+      delete doc.strategyFilters.riskAllowlist;
+    }
   }
   if (partial.risk && typeof partial.risk === 'object') {
     doc.risk = { ...doc.risk, ...partial.risk };
   }
   if (partial.execution && typeof partial.execution === 'object') {
     doc.execution = { ...doc.execution, ...partial.execution };
+  }
+  if (partial.automation && typeof partial.automation === 'object') {
+    doc.automation = { ...(doc.automation || {}), ...partial.automation };
   }
   const tmp = `${p}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, yaml.dump(doc, { lineWidth: 120, noRefs: true, sortKeys: false }), 'utf8');

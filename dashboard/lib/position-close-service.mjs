@@ -1,5 +1,8 @@
 import { runRelayerCli, sanitizeString } from './relayer-cli.mjs';
 import { getRepoRoot, loadTransactions } from './persistence.mjs';
+import { mergeAndWriteEnv } from './env-store.mjs';
+import { loadEnv } from '../../agents/twilight-strategy-monitor/src/config.js';
+import { readAgentSettings } from './agent-settings.mjs';
 import { flattenCexPosition } from './cex-flatten.mjs';
 import { getOpenPosition, closePosition, unrealizedUsdForOpen } from './position-ledger.mjs';
 import { getStrategyApiEnv } from './env-store.mjs';
@@ -15,6 +18,20 @@ function autoZkRotateAfterCloseEnabled() {
   const v = process.env.AUTO_ZKOS_ROTATE_AFTER_CLOSE;
   if (v == null || String(v).trim() === '') return true;
   return !/^(0|false|no|off)$/i.test(String(v).trim());
+}
+
+function persistTwilightIndexAfterRotateEnabled() {
+  const v = process.env.PERSIST_TWILIGHT_INDEX_AFTER_ROTATE;
+  if (v != null && String(v).trim() !== '' && /^(0|false|no|off)$/i.test(String(v).trim())) {
+    return false;
+  }
+  try {
+    const s = readAgentSettings();
+    if (s.automation && s.automation.persistTwilightIndexAfterRotate === false) return false;
+  } catch {
+    /* missing agent.monitor.yaml */
+  }
+  return true;
 }
 
 function relayerOrdersAllowed() {
@@ -212,11 +229,21 @@ export async function executeFullPositionClose(tradeId, opts = {}) {
             );
             const idxs = parseZkOsAccountIndicesFromAccountsStdout(listAfter.stdout);
             const maxIdx = idxs.length ? Math.max(...idxs) : null;
+            const newHint = maxIdx != null && maxIdx > twilightAccountIndex ? maxIdx : null;
             venueSteps.zkRotate = {
               ...base,
-              newAccountIndexHint: maxIdx != null && maxIdx > twilightAccountIndex ? maxIdx : null,
+              newAccountIndexHint: newHint,
               listAfterOk: listAfter.ok,
             };
+            if (tr.ok && newHint != null && persistTwilightIndexAfterRotateEnabled()) {
+              try {
+                mergeAndWriteEnv({ TWILIGHT_ACCOUNT_INDEX: String(newHint) }, {});
+                loadEnv();
+                venueSteps.zkRotate.persistedTwilightIndexToEnv = newHint;
+              } catch (e) {
+                venueSteps.zkRotate.persistEnvError = e?.message || String(e);
+              }
+            }
           } else {
             venueSteps.zkRotate = base;
           }

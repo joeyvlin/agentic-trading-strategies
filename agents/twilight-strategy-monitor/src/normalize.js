@@ -73,3 +73,52 @@ export function pickTopStrategy(strategies, { maxApyFirst = true } = {}) {
   }
   return list[0] || null;
 }
+
+function normRiskToken(s) {
+  return String(s || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '_')
+    .replace(/-/g, '_');
+}
+
+/**
+ * Client-side filters on Strategy API rows (CEX venue, optional risk allowlist).
+ * @param {object[]} strategies
+ * @param {Record<string, unknown>} filters from agent.monitor.yaml strategyFilters
+ * @param {{ info?: Function }} [logger]
+ */
+export function filterStrategiesForMonitor(strategies, filters, logger) {
+  let list = [...(strategies || [])];
+  const venue = String(filters.cexVenue || 'any').toLowerCase();
+  if (venue === 'binance') {
+    const before = list.length;
+    list = list.filter((s) => cexVenue(s) === 'binance');
+    if (before !== list.length) logger?.info?.(`[FILTER] cexVenue=binance: ${before} → ${list.length} strategies`);
+  } else if (venue === 'bybit') {
+    const before = list.length;
+    list = list.filter((s) => cexVenue(s) === 'bybit');
+    if (before !== list.length) logger?.info?.(`[FILTER] cexVenue=bybit: ${before} → ${list.length} strategies`);
+  }
+
+  const allowRaw = filters.riskAllowlist;
+  if (allowRaw != null && String(allowRaw).trim() !== '') {
+    const allow = String(allowRaw)
+      .split(/[,;]+/)
+      .map((x) => normRiskToken(x))
+      .filter(Boolean);
+    if (allow.length) {
+      const allowSet = new Set(allow);
+      const before = list.length;
+      list = list.filter((s) => {
+        const r = normRiskToken(s.risk ?? s.riskLevel ?? '');
+        return allowSet.has(r);
+      });
+      if (before !== list.length) {
+        logger?.info?.(`[FILTER] riskAllowlist [${allow.join(', ')}]: ${before} → ${list.length} strategies`);
+      }
+    }
+  }
+
+  return list;
+}

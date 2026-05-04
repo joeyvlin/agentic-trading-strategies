@@ -63,6 +63,7 @@ export function loadAgentConfig(logger, options = {}) {
     throw new Error(`AGENT_MODE must be simulation or real, got: ${mode}`);
   }
 
+  const perStrat = Number(doc.risk?.maxNotionalPerStrategyUsd);
   return {
     configPath,
     repoRoot: root,
@@ -70,6 +71,8 @@ export function loadAgentConfig(logger, options = {}) {
     strategyFilters: doc.strategyFilters || {},
     risk: {
       maxTotalNotionalUsd: Number(doc.risk?.maxTotalNotionalUsd ?? 50_000),
+      maxNotionalPerStrategyUsd:
+        Number.isFinite(perStrat) && perStrat > 0 ? perStrat : Number.POSITIVE_INFINITY,
       maxNotionalPerVenueUsd: {
         twilight: Number(doc.risk?.maxNotionalPerVenueUsd?.twilight ?? 25_000),
         binance: Number(doc.risk?.maxNotionalPerVenueUsd?.binance ?? 25_000),
@@ -77,6 +80,14 @@ export function loadAgentConfig(logger, options = {}) {
       },
       maxConcurrentLogicalTrades: Number(doc.risk?.maxConcurrentLogicalTrades ?? 3),
       maxDailyLossUsd: Number(doc.risk?.maxDailyLossUsd ?? 5000),
+    },
+    automation: {
+      autoPickZkOsAccount: doc.automation?.autoPickZkOsAccount !== false,
+      persistTwilightIndexAfterRotate: doc.automation?.persistTwilightIndexAfterRotate !== false,
+      openTradeMaxZkAttempts: (() => {
+        const n = Number(doc.automation?.openTradeMaxZkAttempts);
+        return Number.isFinite(n) && n >= 1 ? Math.min(5, Math.floor(n)) : 3;
+      })(),
     },
     executionMode: mode,
     strategyApiBase: process.env.STRATEGY_API_BASE_URL || 'https://strategy.lunarpunk.xyz',

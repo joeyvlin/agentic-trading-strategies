@@ -42,22 +42,58 @@
       </div>
     </header>
 
-    <nav class="flow-nav" aria-label="Sections">
-      <a href="#sec-env">Environment</a>
-      <a href="#sec-wallet">Wallet</a>
-      <a href="#sec-faucet">Faucet</a>
-      <a href="#sec-manage">Manage</a>
-      <a href="#sec-zkos">ZkOS</a>
-      <a href="#sec-keys">CEX keys</a>
-      <a href="#sec-strategies">Best trades</a>
-      <a href="#sec-agent-pnl">P&amp;L</a>
-      <a href="#sec-trade-desk">Trades</a>
-      <a href="#sec-agent">Auto agent</a>
-    </nav>
-
     <div id="dashboard-toasts" class="dashboard-toasts" aria-live="polite" aria-relevant="additions"></div>
 
     <main class="grid flow-grid">
+      <div class="desk-tabs desk-span-all" role="tablist" aria-label="Desk mode">
+        <button
+          type="button"
+          class="desk-tab is-active"
+          role="tab"
+          id="tab-desk-manual"
+          aria-selected="true"
+          aria-controls="desk-panel-manual"
+        >
+          Manual
+        </button>
+        <button
+          type="button"
+          class="desk-tab"
+          role="tab"
+          id="tab-desk-automated"
+          aria-selected="false"
+          aria-controls="desk-panel-automated"
+        >
+          Automated
+        </button>
+      </div>
+
+      <nav class="flow-nav flow-nav-manual desk-span-all" aria-label="Manual sections">
+        <a href="#sec-env">Environment</a>
+        <a href="#sec-wallet">Wallet</a>
+        <a href="#sec-faucet">Faucet</a>
+        <a href="#sec-manage">Manage</a>
+        <a href="#sec-zkos">ZkOS</a>
+        <a href="#sec-keys">CEX keys</a>
+        <a href="#sec-strategies">Best trades</a>
+        <a href="#sec-agent-pnl">P&amp;L</a>
+        <a href="#sec-trade-desk">Trades</a>
+        <a href="#sec-advanced" class="desk-link-automated">Advanced →</a>
+        <a href="#sec-agent" class="desk-link-automated">Automated trading →</a>
+      </nav>
+
+      <nav class="flow-nav flow-nav-automated desk-span-all" aria-label="Automated desk" hidden>
+        <a href="#sec-agent" class="desk-link-automated">Automated trading</a>
+        <a href="#sec-advanced" class="desk-link-automated">Advanced</a>
+        <span class="desk-nav-sep muted small" aria-hidden="true">·</span>
+        <span class="muted small">Setup:</span>
+        <a href="#sec-env" class="desk-link-manual" data-sec="sec-env">Environment</a>
+        <a href="#sec-wallet" class="desk-link-manual" data-sec="sec-wallet">Wallet</a>
+        <a href="#sec-keys" class="desk-link-manual" data-sec="sec-keys">CEX keys</a>
+        <a href="#sec-zkos" class="desk-link-manual" data-sec="sec-zkos">ZkOS</a>
+      </nav>
+
+      <div id="desk-panel-manual" class="desk-tab-panel" role="tabpanel" aria-labelledby="tab-desk-manual">
       <section class="card wide" id="sec-env">
         <h2>Environment</h2>
         <p class="muted">
@@ -260,7 +296,8 @@
         <h2><span class="step-num">3</span> Manage wallet</h2>
         <p class="muted">
           Read-only and session actions via <code>relayer-cli</code>. For <strong>ZkOS fund / account index</strong>, use
-          <a href="#sec-zkos">ZkOS (step 3b)</a>. Advanced below still has duplicate ZkOS tools and live orders (gated by
+          <a href="#sec-zkos">ZkOS (step 3b)</a>.
+          <a href="#sec-advanced" class="desk-link-automated">Automated → Advanced</a> still has duplicate ZkOS tools and live orders (gated by
           <code>RELAYER_ALLOW_DASHBOARD_*</code>). Use the password from <strong>Twilight wallet</strong> (step 1), or
           <code>NYKS_WALLET_PASSPHRASE</code> on the server.
         </p>
@@ -344,7 +381,7 @@
             list output (dropdown shows <strong>io_type</strong> / <strong>tx_type</strong> from the table). Adjust the
             number if needed, then <strong>Save default index</strong>. Fund / Rotate below use their own fields (rotate
             uses “Rotate from index”). <strong>Memo</strong> means the account is locked in an order flow — use
-            <strong>Advanced → Relayer</strong>: <em>Close trade</em> (or <em>Cancel trade</em> for unfilled limits), then
+            <strong>Automated → Advanced → Relayer</strong>: <em>Close trade</em> (or <em>Cancel trade</em> for unfilled limits), then
             after settlement <em>Unlock settled close</em>; if the submit failed use <em>Unlock failed order</em>. Then
             <code>zkaccount transfer</code> (Rotate) before the next <code>open-trade</code> on a fresh address (see skill
             order lifecycle). If auto-rotate after Trade desk close is off or blocked, use <strong>Transfer</strong> at
@@ -448,7 +485,7 @@
           into one <strong>new</strong> ZkOS account — you cannot target an existing index as the destination. Below 100%,
           the desk runs <code>zkaccount split</code> with two parts that sum to the listed source total (creates
           <strong>two</strong> new accounts). Parsed balances are best-effort from the last list output; if the relayer
-          rejects the amount, try <strong>List ZkOS accounts</strong> again or use Advanced → relayer CLI.
+          rejects the amount, try <strong>List ZkOS accounts</strong> again or use Automated → Advanced → relayer CLI.
         </p>
         <div class="field-grid">
           <label class="field wide">
@@ -581,7 +618,7 @@
           <button type="button" class="btn small" id="btn-pnl-refresh">Refresh</button>
         </div>
         <p class="muted" id="pnl-note-line"></p>
-        <dl class="stats" id="pnl-stats"></dl>
+        <dl class="stats stats-cols" id="pnl-stats"></dl>
         <h3 class="subhead">Open (unrealized)</h3>
         <p class="muted small">Click a row (not <strong>Close</strong>) for leg notionals, direction, leverage, and venue snapshot.</p>
         <div class="table-wrap">
@@ -680,208 +717,285 @@
         <h3 class="subhead">Twilight account (live)</h3>
         <pre class="out out-compact" id="trade-desk-twilight-out">Loading…</pre>
       </section>
+      </div>
 
-      <section class="card wide" id="sec-agent">
-        <h2><span class="step-num">8</span> Automatic agent</h2>
-        <p class="muted">
-          Edits <code>configs/agent.monitor.yaml</code> (YAML comments are not preserved on save). The monitor polls the
-          Strategy API, enforces risk caps, then runs in <strong>simulation</strong> or <strong>real</strong> mode per
-          <code>execution.mode</code> and <code>AGENT_MODE</code> in <code>.env</code>. Real trading also requires
-          <strong>Allow real trading</strong> in Twilight wallet (step 1), which writes <code>CONFIRM_REAL_TRADING</code> to <code>.env</code>.
-        </p>
-        <div class="field-grid">
-          <label class="field">
-            <span>Poll interval (ms)</span>
-            <input type="text" id="agent-poll" inputmode="numeric" />
-          </label>
-          <label class="field">
-            <span>Strategy limit</span>
-            <input type="text" id="agent-limit" inputmode="numeric" />
-          </label>
-          <label class="inline-check wide">
-            <input type="checkbox" id="agent-profitable" />
-            <span>Only profitable strategies</span>
-          </label>
-          <label class="field">
-            <span>Execution mode</span>
-            <select id="agent-mode">
-              <option value="simulation">simulation</option>
-              <option value="real">real</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>Max total notional USD</span>
-            <input type="text" id="agent-max-total" inputmode="decimal" />
-          </label>
-          <label class="field">
-            <span>Max concurrent trades</span>
-            <input type="text" id="agent-max-concurrent" inputmode="numeric" />
-          </label>
-          <label class="field">
-            <span>Max daily loss USD</span>
-            <input type="text" id="agent-max-daily" inputmode="decimal" />
-          </label>
-        </div>
-        <div class="btn-row">
-          <button type="button" class="btn primary" id="btn-save-agent">Save agent settings</button>
-          <button type="button" class="btn ghost" id="btn-reload-agent">Reload</button>
-        </div>
-        <p class="hint" id="agent-settings-msg"></p>
-
-        <h3 class="subhead">Monitor</h3>
-        <div class="status-line" id="status-line">Loading…</div>
-        <div class="btn-row">
-          <button type="button" class="btn primary" id="btn-start">Start monitor</button>
-          <button type="button" class="btn danger" id="btn-stop">Stop</button>
-        </div>
-        <p class="hint" id="last-cycle"></p>
-      </section>
-
-      <details class="card wide advanced-block" id="sec-advanced">
-        <summary>Advanced — agent monitor, YAML, logs, relayer orders</summary>
-        <div class="advanced-inner">
-          <section class="card inner-card">
-            <h2>Simulation</h2>
-            <button type="button" class="btn" id="btn-sim-once">Run simulation once</button>
-            <pre class="out" id="sim-out"></pre>
-          </section>
-
-          <section class="card inner-card wide">
-            <div class="card-head">
-              <h2>Configuration</h2>
-              <button type="button" class="btn small" id="btn-reload-config">Reload</button>
-            </div>
-            <textarea id="config-yaml" spellcheck="false" rows="14"></textarea>
-            <button type="button" class="btn primary" id="btn-save-config">Save YAML</button>
-            <p class="hint" id="config-msg"></p>
-          </section>
-
-          <section class="card inner-card">
-            <h2>Portfolio reset</h2>
-            <p class="muted">Clears in-memory agent portfolio snapshot only (not the position ledger in step 6).</p>
-            <button type="button" class="btn ghost small" id="btn-reset-portfolio">Reset portfolio state</button>
-          </section>
-
-          <section class="card inner-card wide">
-            <div class="card-head">
-              <h2>Transactions (agent)</h2>
-              <button type="button" class="btn small" id="btn-refresh-tx">Refresh</button>
-            </div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Time</th>
-                    <th>Strategy</th>
-                    <th>APY</th>
-                    <th>Notional</th>
-                    <th>Est. daily $</th>
-                    <th>Mode</th>
-                  </tr>
-                </thead>
-                <tbody id="tx-body"></tbody>
-              </table>
-            </div>
-          </section>
-
-          <section class="card inner-card wide">
-            <div class="card-head">
-              <h2>Recent logs</h2>
-              <button type="button" class="btn small" id="btn-refresh-logs">Refresh</button>
-            </div>
-            <pre class="log" id="log-box"></pre>
-          </section>
-
-          <section class="card inner-card wide relayer-section">
-            <div class="card-head">
-              <h2>Relayer — ZkOS &amp; orders</h2>
-              <button type="button" class="btn small" id="btn-relayer-meta">Meta</button>
-            </div>
-            <p class="muted" id="relayer-meta-line"></p>
-            <p class="hint" id="relayer-binary-hint"></p>
-            <p class="hint" id="relayer-gate-hint">
-              ZkOS: <code>RELAYER_ALLOW_DASHBOARD_ZK=YES</code> · Orders:
-              <code>RELAYER_ALLOW_DASHBOARD_ORDERS=YES</code> · Unlock-close / unlock-failed: either gate
-            </p>
-            <div class="field-grid">
-              <label class="field">
-                <span>Fund (sats)</span>
-                <input type="text" id="relayer-fund-sats" inputmode="numeric" placeholder="e.g. 10000" />
-              </label>
-              <label class="field">
-                <span>Rotate from index</span>
-                <input type="text" id="relayer-zk-from" inputmode="numeric" placeholder="0" />
-              </label>
-            </div>
-            <div class="btn-row">
-              <button type="button" class="btn danger" id="btn-relayer-fund">Zk fund</button>
-              <button type="button" class="btn danger" id="btn-relayer-transfer">Zk transfer</button>
-            </div>
-            <div class="field-grid">
-              <label class="field">
-                <span>Open · account index</span>
-                <input type="text" id="relayer-ot-acc" inputmode="numeric" />
-              </label>
-              <label class="field">
-                <span>Side</span>
-                <select id="relayer-ot-side">
-                  <option value="long">long</option>
-                  <option value="short">short</option>
-                </select>
-              </label>
-              <label class="field">
-                <span>Entry USD</span>
-                <input type="text" id="relayer-ot-price" inputmode="numeric" />
-              </label>
-              <label class="field">
-                <span>Leverage</span>
-                <input type="text" id="relayer-ot-lev" inputmode="numeric" />
-              </label>
-              <label class="inline-check">
-                <input type="checkbox" id="relayer-ot-nowait" />
-                <span>--no-wait</span>
-              </label>
-            </div>
-            <div class="btn-row">
-              <button type="button" class="btn danger" id="btn-relayer-open">Open trade</button>
-            </div>
-            <div class="field-grid">
-              <label class="field">
-                <span>Close / cancel · index</span>
-                <input type="text" id="relayer-close-acc" inputmode="numeric" />
-              </label>
-              <label class="inline-check">
-                <input type="checkbox" id="relayer-close-nowait" />
-                <span>Close --no-wait</span>
-              </label>
-            </div>
-            <div class="btn-row">
-              <button type="button" class="btn danger" id="btn-relayer-close">Close trade</button>
-              <button type="button" class="btn danger" id="btn-relayer-cancel">Cancel trade</button>
-            </div>
-            <p class="hint small">
-              After a position <strong>settles</strong> (or liquidates), account stays <code>Memo</code> until
-              <code>unlock-close-order</code>. If open failed, use <code>unlock-failed-order</code>. Same index field as
-              above.
+      <div
+        id="desk-panel-automated"
+        class="desk-tab-panel"
+        role="tabpanel"
+        aria-labelledby="tab-desk-automated"
+        hidden
+      >
+        <section class="card wide" id="sec-agent">
+          <h2><span class="step-num">8</span> Automated trading</h2>
+          <p class="muted">
+            Stay-alive monitor: <strong>one</strong> loop at a time polls the Strategy API on <code>pollIntervalMs</code> for the newest
+            strategies, applies CEX / risk filters, enforces caps, then executes in <strong>simulation</strong> or <strong>real</strong> per
+            <code>execution.mode</code> and <code>AGENT_MODE</code> in <code>.env</code>. Settings edit
+            <code>configs/agent.monitor.yaml</code> (comments are not preserved on save). Real mode needs
+            <strong>Allow real trading</strong> in Twilight wallet (step 1). ZkOS: auto-pick prefers a <strong>Coin</strong> (non-Memo) index for
+            opens; after a real close + rotate, the server can persist the new <code>TWILIGHT_ACCOUNT_INDEX</code> to <code>.env</code> when enabled below.
+          </p>
+          <div class="card-inset automated-panel-intro">
+            <h3 class="subhead">Run once without starting the loop</h3>
+            <p class="muted small">
+              Executes a single poll cycle using the saved YAML and execution mode (same code path as the monitor timer).
+              For a forced simulation shot regardless of YAML, open <a href="#sec-advanced">Advanced</a> below and use
+              <strong>Run simulation once</strong>.
             </p>
             <div class="btn-row">
-              <button type="button" class="btn" id="btn-relayer-unlock-close">Unlock settled close</button>
-              <button type="button" class="btn ghost" id="btn-relayer-unlock-failed">Unlock failed order</button>
+              <button type="button" class="btn" id="btn-agent-run-once">Run one poll cycle</button>
             </div>
-            <h3 class="subhead">Import mnemonic</h3>
-            <label class="field wide">
-              <span>Mnemonic</span>
-              <textarea id="relayer-import-mnemonic" rows="2" spellcheck="false"></textarea>
+            <pre class="out out-compact" id="agent-run-once-out" hidden></pre>
+            <h3 class="subhead">Setup checklist</h3>
+            <p class="muted small">Links open the <strong>Manual</strong> tab and scroll to the section.</p>
+            <ul class="automated-checklist muted small">
+              <li><code>STRATEGY_API_KEY</code> — <a href="#sec-env" class="desk-link-manual" data-sec="sec-env">Environment</a></li>
+              <li>CEX keys for real legs — <a href="#sec-keys" class="desk-link-manual" data-sec="sec-keys">CEX keys</a></li>
+              <li>Funded ZkOS index — <a href="#sec-zkos" class="desk-link-manual" data-sec="sec-zkos">ZkOS</a></li>
+              <li>Session wallet + allow real for <strong>real</strong> — <a href="#sec-wallet" class="desk-link-manual" data-sec="sec-wallet">Wallet</a></li>
+              <li>Ledger &amp; venue view — <a href="#sec-agent-pnl" class="desk-link-manual" data-sec="sec-agent-pnl">P&amp;L</a>,
+                <a href="#sec-trade-desk" class="desk-link-manual" data-sec="sec-trade-desk">Trades</a></li>
+              <li>Raw YAML / sim / logs — <a href="#sec-advanced">Advanced</a> (summary block below)</li>
+            </ul>
+          </div>
+          <div class="field-grid">
+            <label class="field">
+              <span>Poll interval (ms)</span>
+              <input type="text" id="agent-poll" inputmode="numeric" />
             </label>
-            <div class="btn-row">
-              <button type="button" class="btn" id="btn-relayer-import">Import</button>
-              <button type="button" class="btn" id="btn-relayer-ping">Ping (price)</button>
-              <button type="button" class="btn" id="btn-relayer-mstats">Market stats</button>
-            </div>
-            <pre class="out relayer-out" id="relayer-out"></pre>
-          </section>
-        </div>
-      </details>
+            <label class="field">
+              <span>Strategy limit</span>
+              <input type="text" id="agent-limit" inputmode="numeric" />
+            </label>
+            <label class="inline-check wide">
+              <input type="checkbox" id="agent-profitable" />
+              <span>Only profitable strategies</span>
+            </label>
+            <label class="field">
+              <span>Execution mode</span>
+              <select id="agent-mode">
+                <option value="simulation">simulation</option>
+                <option value="real">real</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Max total notional USD</span>
+              <input type="text" id="agent-max-total" inputmode="decimal" />
+            </label>
+            <label class="field">
+              <span>Max concurrent trades</span>
+              <input type="text" id="agent-max-concurrent" inputmode="numeric" />
+            </label>
+            <label class="field">
+              <span>Max daily loss USD</span>
+              <input type="text" id="agent-max-daily" inputmode="decimal" />
+            </label>
+            <label class="field">
+              <span>Max notional USD per strategy</span>
+              <input type="text" id="agent-max-per-strategy" inputmode="decimal" placeholder="0 = no cap" />
+            </label>
+            <label class="field">
+              <span>CEX filter (strategy leg)</span>
+              <select id="agent-cex-venue">
+                <option value="any">Any</option>
+                <option value="binance">Binance only</option>
+                <option value="bybit">Bybit only</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Strategy API risk param</span>
+              <select id="agent-strategy-risk">
+                <option value="any">Any (omit query)</option>
+                <option value="VERY_LOW">VERY_LOW</option>
+                <option value="LOW">LOW</option>
+                <option value="MEDIUM">MEDIUM</option>
+                <option value="HIGH">HIGH</option>
+              </select>
+            </label>
+            <label class="field wide">
+              <span>Risk allowlist (optional, comma-separated)</span>
+              <input type="text" id="agent-risk-allowlist" placeholder="e.g. LOW,MEDIUM — filters API rows" autocomplete="off" />
+            </label>
+            <label class="inline-check wide">
+              <input type="checkbox" id="chk-auto-pick-zkos" checked />
+              <span>Auto-pick ZkOS Coin index for real opens (override Memo default)</span>
+            </label>
+            <label class="inline-check wide">
+              <input type="checkbox" id="chk-persist-zk-index" checked />
+              <span>After close + rotate, persist new <code>TWILIGHT_ACCOUNT_INDEX</code> to <code>.env</code></span>
+            </label>
+            <label class="field">
+              <span>Max Twilight open-trade attempts (1–5)</span>
+              <input type="text" id="agent-open-trade-max-zk" inputmode="numeric" placeholder="3" title="Re-list ZkOS accounts and try the next Coin index after recoverable errors when auto-pick is on." />
+            </label>
+          </div>
+          <div class="btn-row">
+            <button type="button" class="btn primary" id="btn-save-agent">Save agent settings</button>
+            <button type="button" class="btn ghost" id="btn-reload-agent">Reload</button>
+          </div>
+          <p class="hint" id="agent-settings-msg"></p>
+
+          <h3 class="subhead">Monitor</h3>
+          <p class="muted small">
+            <strong>Start monitor</strong> runs the first poll immediately, then repeats on the poll interval until <strong>Stop</strong>.
+            Only one monitor is active for this dashboard server.
+          </p>
+          <div class="status-line" id="status-line">Loading…</div>
+          <div class="btn-row">
+            <button type="button" class="btn primary" id="btn-start">Start monitor</button>
+            <button type="button" class="btn danger" id="btn-stop">Stop monitor</button>
+          </div>
+          <p class="hint" id="last-cycle"></p>
+          <pre class="out out-compact monitor-error-detail" id="monitor-error-detail" hidden></pre>
+        </section>
+
+        <details class="card wide advanced-block" id="sec-advanced">
+          <summary>Advanced — agent monitor, YAML, logs, relayer orders</summary>
+          <div class="advanced-inner">
+            <section class="card inner-card">
+              <h2>Simulation</h2>
+              <button type="button" class="btn" id="btn-sim-once">Run simulation once</button>
+              <pre class="out" id="sim-out"></pre>
+            </section>
+
+            <section class="card inner-card wide">
+              <div class="card-head">
+                <h2>Configuration</h2>
+                <button type="button" class="btn small" id="btn-reload-config">Reload</button>
+              </div>
+              <textarea id="config-yaml" spellcheck="false" rows="14"></textarea>
+              <button type="button" class="btn primary" id="btn-save-config">Save YAML</button>
+              <p class="hint" id="config-msg"></p>
+            </section>
+
+            <section class="card inner-card">
+              <h2>Portfolio reset</h2>
+              <p class="muted">Clears in-memory agent portfolio snapshot only (not the position ledger in step 6).</p>
+              <button type="button" class="btn ghost small" id="btn-reset-portfolio">Reset portfolio state</button>
+            </section>
+
+            <section class="card inner-card wide">
+              <div class="card-head">
+                <h2>Transactions (agent)</h2>
+                <button type="button" class="btn small" id="btn-refresh-tx">Refresh</button>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Strategy</th>
+                      <th>APY</th>
+                      <th>Notional</th>
+                      <th>Est. daily $</th>
+                      <th>Mode</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tx-body"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="card inner-card wide">
+              <div class="card-head">
+                <h2>Recent logs</h2>
+                <button type="button" class="btn small" id="btn-refresh-logs">Refresh</button>
+              </div>
+              <pre class="log" id="log-box"></pre>
+            </section>
+
+            <section class="card inner-card wide relayer-section">
+              <div class="card-head">
+                <h2>Relayer — ZkOS &amp; orders</h2>
+                <button type="button" class="btn small" id="btn-relayer-meta">Meta</button>
+              </div>
+              <p class="muted" id="relayer-meta-line"></p>
+              <p class="hint" id="relayer-binary-hint"></p>
+              <p class="hint" id="relayer-gate-hint">
+                ZkOS: <code>RELAYER_ALLOW_DASHBOARD_ZK=YES</code> · Orders:
+                <code>RELAYER_ALLOW_DASHBOARD_ORDERS=YES</code> · Unlock-close / unlock-failed: either gate
+              </p>
+              <div class="field-grid">
+                <label class="field">
+                  <span>Fund (sats)</span>
+                  <input type="text" id="relayer-fund-sats" inputmode="numeric" placeholder="e.g. 10000" />
+                </label>
+                <label class="field">
+                  <span>Rotate from index</span>
+                  <input type="text" id="relayer-zk-from" inputmode="numeric" placeholder="0" />
+                </label>
+              </div>
+              <div class="btn-row">
+                <button type="button" class="btn danger" id="btn-relayer-fund">Zk fund</button>
+                <button type="button" class="btn danger" id="btn-relayer-transfer">Zk transfer</button>
+              </div>
+              <div class="field-grid">
+                <label class="field">
+                  <span>Open · account index</span>
+                  <input type="text" id="relayer-ot-acc" inputmode="numeric" />
+                </label>
+                <label class="field">
+                  <span>Side</span>
+                  <select id="relayer-ot-side">
+                    <option value="long">long</option>
+                    <option value="short">short</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Entry USD</span>
+                  <input type="text" id="relayer-ot-price" inputmode="numeric" />
+                </label>
+                <label class="field">
+                  <span>Leverage</span>
+                  <input type="text" id="relayer-ot-lev" inputmode="numeric" />
+                </label>
+                <label class="inline-check">
+                  <input type="checkbox" id="relayer-ot-nowait" />
+                  <span>--no-wait</span>
+                </label>
+              </div>
+              <div class="btn-row">
+                <button type="button" class="btn danger" id="btn-relayer-open">Open trade</button>
+              </div>
+              <div class="field-grid">
+                <label class="field">
+                  <span>Close / cancel · index</span>
+                  <input type="text" id="relayer-close-acc" inputmode="numeric" />
+                </label>
+                <label class="inline-check">
+                  <input type="checkbox" id="relayer-close-nowait" />
+                  <span>Close --no-wait</span>
+                </label>
+              </div>
+              <div class="btn-row">
+                <button type="button" class="btn danger" id="btn-relayer-close">Close trade</button>
+                <button type="button" class="btn danger" id="btn-relayer-cancel">Cancel trade</button>
+              </div>
+              <p class="hint small">
+                After a position <strong>settles</strong> (or liquidates), account stays <code>Memo</code> until
+                <code>unlock-close-order</code>. If open failed, use <code>unlock-failed-order</code>. Same index field as
+                above.
+              </p>
+              <div class="btn-row">
+                <button type="button" class="btn" id="btn-relayer-unlock-close">Unlock settled close</button>
+                <button type="button" class="btn ghost" id="btn-relayer-unlock-failed">Unlock failed order</button>
+              </div>
+              <h3 class="subhead">Import mnemonic</h3>
+              <label class="field wide">
+                <span>Mnemonic</span>
+                <textarea id="relayer-import-mnemonic" rows="2" spellcheck="false"></textarea>
+              </label>
+              <div class="btn-row">
+                <button type="button" class="btn" id="btn-relayer-import">Import</button>
+                <button type="button" class="btn" id="btn-relayer-ping">Ping (price)</button>
+                <button type="button" class="btn" id="btn-relayer-mstats">Market stats</button>
+              </div>
+              <pre class="out relayer-out" id="relayer-out"></pre>
+            </section>
+          </div>
+        </details>
+      </div>
     </main>
 
     <div

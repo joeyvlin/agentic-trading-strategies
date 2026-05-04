@@ -26,6 +26,13 @@ export function evaluateRisk({ strategy, risk, portfolio, logger }) {
     );
   }
 
+  const perStratCap = risk.maxNotionalPerStrategyUsd;
+  if (Number.isFinite(perStratCap) && perStratCap > 0 && n.total > perStratCap) {
+    reasons.push(
+      `strategy template notional ${n.total.toFixed(2)} exceeds max per strategy ${perStratCap}`
+    );
+  }
+
   for (const v of ['twilight', 'binance', 'bybit']) {
     const cap = risk.maxNotionalPerVenueUsd[v];
     const open = venueOpenNotional(portfolio, v);

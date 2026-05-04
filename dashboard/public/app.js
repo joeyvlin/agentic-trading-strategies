@@ -2,6 +2,7 @@ const WALLET_STORAGE_KEY = 'selectedTwilightWalletId';
 const WALLET_SESSION_STORAGE_KEY = 'twilightWalletSessionV1';
 const WALLET_SESSION_MODE_STORAGE_KEY = 'twilightWalletSessionModeV1';
 const SECTION_COLLAPSE_STORAGE_KEY = 'dashboardCollapsedSectionsV1';
+const DESK_TAB_STORAGE_KEY = 'dashboardDeskTabV1';
 const STRATEGIES_CEX_FILTER_STORAGE_KEY = 'strategiesCexFilterV1';
 
 /** Last successful `/api/strategies/best` payload; CEX checkboxes filter client-side without refetch. */
@@ -115,6 +116,7 @@ const SECTION_BY_CONTEXT = {
   'Save CEX keys': 'sec-keys',
   'Start monitor': 'sec-agent',
   'Stop monitor': 'sec-agent',
+  'Run one cycle': 'sec-agent',
   'Simulation run': 'sec-advanced',
   'Save agent config YAML': 'sec-advanced',
   'Reset portfolio': 'sec-advanced',
@@ -158,6 +160,13 @@ function showSectionAlert(variant, message, context) {
   host.querySelector('.dashboard-section-alert-dismiss')?.addEventListener('click', () => {
     host.innerHTML = '';
   });
+
+  if (sectionId === 'sec-agent' || sectionId === 'sec-advanced') {
+    const autoPanel = document.getElementById('desk-panel-automated');
+    if (autoPanel?.hasAttribute('hidden')) {
+      document.getElementById('tab-desk-automated')?.click();
+    }
+  }
 
   try {
     sec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -379,9 +388,93 @@ function setSectionCollapsed(section, btn, collapsed) {
   btn.textContent = collapsed ? 'Expand' : 'Collapse';
 }
 
+function initDeskTabs() {
+  const manualPanel = document.getElementById('desk-panel-manual');
+  const autoPanel = document.getElementById('desk-panel-automated');
+  const tabManual = document.getElementById('tab-desk-manual');
+  const tabAuto = document.getElementById('tab-desk-automated');
+  const navManual = document.querySelector('.flow-nav-manual');
+  const navAuto = document.querySelector('.flow-nav-automated');
+
+  function setDeskTab(which, { persist = true } = {}) {
+    const manual = which === 'manual';
+    tabManual?.classList.toggle('is-active', manual);
+    tabAuto?.classList.toggle('is-active', !manual);
+    tabManual?.setAttribute('aria-selected', manual ? 'true' : 'false');
+    tabAuto?.setAttribute('aria-selected', manual ? 'false' : 'true');
+    manualPanel?.toggleAttribute('hidden', !manual);
+    autoPanel?.toggleAttribute('hidden', manual);
+    navManual?.toggleAttribute('hidden', !manual);
+    navAuto?.toggleAttribute('hidden', manual);
+    if (persist) {
+      try {
+        localStorage.setItem(DESK_TAB_STORAGE_KEY, which);
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!manual) refreshStatus();
+  }
+
+  tabManual?.addEventListener('click', () => setDeskTab('manual'));
+  tabAuto?.addEventListener('click', () => setDeskTab('automated'));
+
+  for (const el of document.querySelectorAll('.desk-link-manual')) {
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = el.getAttribute('data-sec') || el.getAttribute('href')?.replace(/^#/, '');
+      setDeskTab('manual');
+      requestAnimationFrame(() => {
+        document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      if (id) history.replaceState(null, '', `#${id}`);
+    });
+  }
+
+  for (const el of document.querySelectorAll('a.desk-link-automated')) {
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = el.getAttribute('href')?.replace(/^#/, '') || 'sec-agent';
+      setDeskTab('automated');
+      if (id === 'sec-advanced') {
+        const det = document.getElementById('sec-advanced');
+        if (det) det.open = true;
+      }
+      requestAnimationFrame(() => {
+        document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      history.replaceState(null, '', `#${id}`);
+    });
+  }
+
+  let initial = 'manual';
+  try {
+    const saved = localStorage.getItem(DESK_TAB_STORAGE_KEY);
+    if (saved === 'automated') initial = 'automated';
+  } catch {
+    /* ignore */
+  }
+  if (location.hash === '#sec-agent' || location.hash === '#sec-advanced') initial = 'automated';
+  setDeskTab(initial, { persist: false });
+  if (location.hash === '#sec-advanced') {
+    const det = document.getElementById('sec-advanced');
+    if (det) det.open = true;
+  }
+
+  window.addEventListener('hashchange', () => {
+    if (location.hash === '#sec-agent' || location.hash === '#sec-advanced') {
+      setDeskTab('automated');
+      if (location.hash === '#sec-advanced') {
+        const det = document.getElementById('sec-advanced');
+        if (det) det.open = true;
+      }
+    }
+  });
+}
+
 function initCollapsibleSections() {
   const state = loadCollapsedSectionsState();
-  const sections = document.querySelectorAll('main.flow-grid > section.card.wide[id]');
+  const sections = document.querySelectorAll('main.flow-grid .desk-tab-panel > section.card.wide[id]');
   for (const sec of sections) {
     const id = sec.id;
     let head = sec.querySelector(':scope > .card-head');
@@ -1642,6 +1735,7 @@ async function relayerPost(path, body) {
 async function refreshStatus(opts = {}) {
   const el = document.getElementById('status-line');
   const last = document.getElementById('last-cycle');
+  const errPre = document.getElementById('monitor-error-detail');
   if (!el) return;
   try {
     const s = await readJson('/api/status');
@@ -1661,6 +1755,18 @@ async function refreshStatus(opts = {}) {
     if (s.lastError && last) {
       last.textContent += ` · Error: ${s.lastError}`;
     }
+    if (errPre) {
+      if (s.lastErrorStack) {
+        errPre.hidden = false;
+        errPre.textContent = s.lastErrorStack;
+      } else if (s.lastError) {
+        errPre.hidden = false;
+        errPre.textContent = s.lastError;
+      } else {
+        errPre.hidden = true;
+        errPre.textContent = '';
+      }
+    }
     el.classList.remove('status-error');
   } catch (e) {
     if (!shouldSurfaceFetchError(e, opts)) return;
@@ -1678,16 +1784,18 @@ async function refreshPnl(opts = {}) {
   try {
     const p = await readJson('/api/pnl');
     if (el) {
-      el.innerHTML = `
-      <dt>Realized P&amp;L (closed)</dt><dd>${fmtUsd(p.realizedPnlUsd)}</dd>
-      <dt>Unrealized P&amp;L (open)</dt><dd>${fmtUsd(p.unrealizedPnlUsd)}</dd>
-      <dt>BTC mark</dt><dd>${p.currentBtcPrice ? '$' + Number(p.currentBtcPrice).toLocaleString() : '—'}</dd>
-      <dt>Open positions</dt><dd>${p.openCount ?? 0}</dd>
-      <dt>Closed positions</dt><dd>${p.closedCount ?? 0}</dd>
-      <dt>Agent tx log (rows)</dt><dd>${p.transactionCount}</dd>
-      <dt>Illustrative daily (APY×notional)</dt><dd>${fmtUsd(p.sumEstimatedDailyUsd)}</dd>
-      <dt>Open notional (portfolio)</dt><dd>${fmtUsd(p.openNotionalUsd)}</dd>
-    `;
+      const stat = (label, value) =>
+        `<div class="stat-item"><dt>${label}</dt><dd>${value}</dd></div>`;
+      el.innerHTML = [
+        stat('Realized P&amp;L (closed)', fmtUsd(p.realizedPnlUsd)),
+        stat('Unrealized P&amp;L (open)', fmtUsd(p.unrealizedPnlUsd)),
+        stat('BTC mark', p.currentBtcPrice ? '$' + Number(p.currentBtcPrice).toLocaleString() : '—'),
+        stat('Open positions', String(p.openCount ?? 0)),
+        stat('Closed positions', String(p.closedCount ?? 0)),
+        stat('Agent tx log (rows)', String(p.transactionCount)),
+        stat('Illustrative daily (APY×notional)', fmtUsd(p.sumEstimatedDailyUsd)),
+        stat('Open notional (portfolio)', fmtUsd(p.openNotionalUsd)),
+      ].join('');
     }
     if (note) note.textContent = p.pnlNote || '';
 
@@ -1732,7 +1840,8 @@ async function refreshPnl(opts = {}) {
     if (!shouldSurfaceFetchError(e, opts)) return;
     const m = errMsg(e);
     lastOpenPositions = [];
-    if (el) el.innerHTML = `<dt>Error</dt><dd>${escapeHtml(m)}</dd>`;
+    if (el)
+      el.innerHTML = `<div class="stat-item"><dt>Error</dt><dd>${escapeHtml(m)}</dd></div>`;
     if (openBody) openBody.innerHTML = '';
     if (closedBody) closedBody.innerHTML = '';
     if (opts.userAction) showDashboardError(m, 'Agent PnL');
@@ -2382,6 +2491,29 @@ async function loadAgentSettings(opts = {}) {
     set('agent-max-total', s.risk?.maxTotalNotionalUsd);
     set('agent-max-concurrent', s.risk?.maxConcurrentLogicalTrades);
     set('agent-max-daily', s.risk?.maxDailyLossUsd);
+    const perStrat = s.risk?.maxNotionalPerStrategyUsd;
+    set(
+      'agent-max-per-strategy',
+      perStrat != null && Number.isFinite(Number(perStrat)) && Number(perStrat) > 0 ? perStrat : ''
+    );
+    const cexEl = document.getElementById('agent-cex-venue');
+    if (cexEl) cexEl.value = (s.strategyFilters?.cexVenue || 'any').toLowerCase();
+    const riskEl = document.getElementById('agent-strategy-risk');
+    if (riskEl) {
+      const r = s.strategyFilters?.risk;
+      riskEl.value = r != null && String(r).trim() !== '' ? String(r).trim() : 'any';
+    }
+    const allow = s.strategyFilters?.riskAllowlist;
+    set(
+      'agent-risk-allowlist',
+      Array.isArray(allow) ? allow.join(',') : allow != null ? String(allow) : ''
+    );
+    const apz = document.getElementById('chk-auto-pick-zkos');
+    if (apz) apz.checked = s.automation?.autoPickZkOsAccount !== false;
+    const pzi = document.getElementById('chk-persist-zk-index');
+    if (pzi) pzi.checked = s.automation?.persistTwilightIndexAfterRotate !== false;
+    const otz = s.automation?.openTradeMaxZkAttempts;
+    set('agent-open-trade-max-zk', otz != null && Number(otz) >= 1 ? otz : '');
     if (msg) {
       msg.textContent = '';
       msg.classList.remove('hint-error');
@@ -2400,20 +2532,32 @@ async function loadAgentSettings(opts = {}) {
 document.getElementById('btn-save-agent')?.addEventListener('click', async () => {
   const msg = document.getElementById('agent-settings-msg');
   try {
+    const riskParam = document.getElementById('agent-strategy-risk')?.value || 'any';
+    const strategyFilters = {
+      profitable: document.getElementById('agent-profitable')?.checked,
+      limit: Number(document.getElementById('agent-limit')?.value) || 5,
+      cexVenue: document.getElementById('agent-cex-venue')?.value || 'any',
+      riskAllowlist: document.getElementById('agent-risk-allowlist')?.value?.trim() || '',
+    };
+    if (riskParam && riskParam !== 'any') strategyFilters.risk = riskParam;
     await readJson('/api/agent/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         pollIntervalMs: Number(document.getElementById('agent-poll')?.value),
-        strategyFilters: {
-          profitable: document.getElementById('agent-profitable')?.checked,
-          limit: Number(document.getElementById('agent-limit')?.value) || 5,
-        },
+        strategyFilters,
         execution: { mode: document.getElementById('agent-mode')?.value || 'simulation' },
         risk: {
           maxTotalNotionalUsd: Number(document.getElementById('agent-max-total')?.value),
           maxConcurrentLogicalTrades: Number(document.getElementById('agent-max-concurrent')?.value),
           maxDailyLossUsd: Number(document.getElementById('agent-max-daily')?.value),
+          maxNotionalPerStrategyUsd: Number(document.getElementById('agent-max-per-strategy')?.value) || 0,
+        },
+        automation: {
+          autoPickZkOsAccount: !!document.getElementById('chk-auto-pick-zkos')?.checked,
+          persistTwilightIndexAfterRotate: !!document.getElementById('chk-persist-zk-index')?.checked,
+          openTradeMaxZkAttempts:
+            Number(document.getElementById('agent-open-trade-max-zk')?.value) || 3,
         },
       }),
     });
@@ -3607,6 +3751,25 @@ document.getElementById('btn-trade-desk-refresh')?.addEventListener('click', () 
   refreshTradeDesk({ userAction: true })
 );
 
+document.getElementById('btn-agent-run-once')?.addEventListener('click', async () => {
+  const out = document.getElementById('agent-run-once-out');
+  if (!out) return;
+  out.hidden = false;
+  out.textContent = 'Running…';
+  try {
+    const r = await readJson('/api/run-once', { method: 'POST' });
+    out.textContent = JSON.stringify(r, null, 2);
+    await refreshPnl({});
+    await refreshTx({});
+    await refreshTradeDesk({});
+    await refreshStatus({ userAction: true });
+  } catch (e) {
+    const m = errMsg(e);
+    out.textContent = m;
+    showDashboardError(m, 'Run one cycle');
+  }
+});
+
 document.getElementById('btn-start')?.addEventListener('click', async () => {
   try {
     await readJson('/api/monitor/start', { method: 'POST' });
@@ -3784,6 +3947,7 @@ if (savedWalletSession?.password) {
   if (pw) pw.value = savedWalletSession.password;
 }
 
+initDeskTabs();
 initCollapsibleSections();
 rebuildZkosTransferFromSelect();
 syncZkosInspector();

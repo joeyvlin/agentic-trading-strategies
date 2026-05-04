@@ -85,10 +85,12 @@ export function createMonitorService() {
   let pollIntervalMs = 60000;
   let lastCycle = null;
   let lastError = null;
+  let lastErrorStack = null;
   let startedAt = null;
 
   async function tick(executionModeOverride) {
     lastError = null;
+    lastErrorStack = null;
     try {
       applyDashboardExchangeKeysToEnv();
       const config = loadAgentConfig(logger, {
@@ -121,7 +123,9 @@ export function createMonitorService() {
       return result;
     } catch (e) {
       lastError = e.message || String(e);
-      logger.error(lastError, e);
+      lastErrorStack = typeof e?.stack === 'string' ? e.stack : '';
+      const detail = lastErrorStack ? `${lastError}\n\n${lastErrorStack}` : lastError;
+      logger.error(detail, e);
       throw e;
     }
   }
@@ -135,6 +139,7 @@ export function createMonitorService() {
       pollIntervalMs,
       lastCycle,
       lastError,
+      lastErrorStack,
       openNotionalUsd: totalOpenNotional(portfolio),
       logicalTradeCount: portfolio.logicalTrades.length,
     }),
@@ -212,6 +217,7 @@ export function createMonitorService() {
      */
     runStrategyOnce: async (strategyId, executionModeOverride, third) => {
       lastError = null;
+      lastErrorStack = null;
       applyDashboardExchangeKeysToEnv();
       const config = loadAgentConfig(logger, { executionMode: executionModeOverride });
       if (config.executionMode === 'real' && process.env.CONFIRM_REAL_TRADING !== 'YES') {

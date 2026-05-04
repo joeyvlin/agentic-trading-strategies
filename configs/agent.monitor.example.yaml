@@ -7,9 +7,11 @@ pollIntervalMs: 60000
 strategyFilters:
   profitable: true
   limit: 10
+  cexVenue: any
   # minApy: 10
   # category: Delta-Neutral
   # risk: LOW
+  # riskAllowlist: LOW,MEDIUM
 
 # Risk limits (USD notionals where applicable; align with Strategy API field meanings)
 risk:
@@ -23,9 +25,15 @@ risk:
   maxConcurrentLogicalTrades: 3
   # Stop opening new trades after this much daily loss (simulated or tracked)
   maxDailyLossUsd: 5000
+  # maxNotionalPerStrategyUsd: 25000
 
 # Execution profile (overridden by AGENT_MODE env: simulation | real)
 execution:
   # simulation: log + in-memory portfolio only
   # real: CEX via ccxt when API keys set; Twilight only if explicitly enabled (see README)
   mode: simulation
+
+automation:
+  autoPickZkOsAccount: true
+  persistTwilightIndexAfterRotate: true
+  # openTradeMaxZkAttempts: 3

@@ -3,6 +3,13 @@ import { spawn } from 'child_process';
 import ccxt from 'ccxt';
 import { resolveBinanceCredsForReal, resolveBybitCredsForReal } from '../cexFileCreds.js';
 import { cexVenue, estimateVenueNotionals, cexPositionSide, cexSizeUsd } from '../normalize.js';
+import {
+  pickZkOsIndexForOpenTrade,
+  parseZkOsAccountRows,
+  parseZkOsAccountIndicesFromAccountsStdout,
+  pickNextCoinZkOsIndexAfterFailure,
+  shouldRetryTwilightOpenAfterZkRefresh,
+} from '../zkOsAccounts.js';
 
 function btcPriceFromMarket(market, venue) {
   const p = market?.prices;
@@ -130,86 +137,6 @@ function argvForLog(argv) {
   return out.join(' ');
 }
 
-/** Best-effort: read io_type for a ZkOS account index from `wallet accounts --json` stdout (JSON shapes only). */
-function parseZkOsIoTypeForAccountIndex(stdout, index) {
-  const want = Number(index);
-  if (!Number.isFinite(want)) return null;
-  const s = String(stdout || '').trim();
-  if (!s) return null;
-  try {
-    const j = JSON.parse(s);
-    const arr = Array.isArray(j) ? j : j?.accounts || j?.zkosAccounts || j?.zkAccounts || j?.data;
-    if (!Array.isArray(arr)) return null;
-    for (const row of arr) {
-      if (row == null || typeof row !== 'object') continue;
-      const ix = Number(row.account_index ?? row.accountIndex ?? row.index);
-      if (ix !== want) continue;
-      const io = String(row.io_type ?? row.ioType ?? row.IO_TYPE ?? '').trim();
-      return io || null;
-    }
-  } catch {
-    /* table / plain text */
-  }
-  return null;
-}
-
-/**
- * Parse `relayer-cli wallet accounts --json` stdout into numeric ZkOS account indices.
- * @param {string} stdout
- * @returns {number[]}
- */
-function parseZkOsAccountIndicesFromAccountsStdout(stdout) {
-  const s = String(stdout || '').trim();
-  if (!s) return [];
-  if (/no zkos accounts found/i.test(s)) return [];
-
-  const collectFromObject = (row) => {
-    if (row == null || typeof row !== 'object') return null;
-    const raw =
-      row.account_index ?? row.accountIndex ?? row.index ?? row.zk_account_index;
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : null;
-  };
-
-  try {
-    const j = JSON.parse(s);
-    if (Array.isArray(j)) {
-      return j.map(collectFromObject).filter((n) => n != null);
-    }
-    if (j && typeof j === 'object') {
-      for (const key of ['accounts', 'zkosAccounts', 'zkAccounts', 'data']) {
-        const arr = j[key];
-        if (Array.isArray(arr)) {
-          return arr.map(collectFromObject).filter((n) => n != null);
-        }
-      }
-      const one = collectFromObject(j);
-      if (one != null) return [one];
-    }
-  } catch {
-    /* fall through to heuristics */
-  }
-
-  const found = new Set();
-  const re = /(?:account_index|accountIndex|index)\s*[:=]\s*(\d+)/gi;
-  let m;
-  while ((m = re.exec(s)) !== null) {
-    const n = Number(m[1]);
-    if (Number.isFinite(n)) found.add(n);
-  }
-  // Fallback for table/plain-text rows:
-  // INDEX    BALANCE ...
-  // 0        48750   ...
-  // 1        15375   ...
-  for (const line of s.split('\n')) {
-    const row = /^\s*(\d+)\s+/.exec(line);
-    if (!row) continue;
-    const n = Number(row[1]);
-    if (Number.isFinite(n)) found.add(n);
-  }
-  return [...found].sort((a, b) => a - b);
-}
-
 function formatRelayerCliError(code, stderr, stdout) {
   const errText = String(stderr || '').trim();
   const outText = String(stdout || '').trim();
@@ -273,9 +200,17 @@ function shouldRunTwilightCli() {
 
 /**
  * Real execution: optional Twilight via relayer-cli; CEX via ccxt when configured.
- * @param {{ strategy: object, notionals: object, market: object, logger: object, relayerEnv?: Record<string,string>, relayerCwd?: string }} opts
+ * @param {{ strategy: object, notionals: object, market: object, logger: object, relayerEnv?: Record<string,string>, relayerCwd?: string, automation?: { autoPickZkOsAccount?: boolean, openTradeMaxZkAttempts?: number } }} opts
  */
-export async function executeReal({ strategy, notionals, market, logger, relayerEnv, relayerCwd }) {
+export async function executeReal({
+  strategy,
+  notionals,
+  market,
+  logger,
+  relayerEnv,
+  relayerCwd,
+  automation = {},
+}) {
   const id = randomUUID();
   const venue = cexVenue(strategy);
   const price = Math.round(btcPriceFromMarket(market, venue || 'binance'));
@@ -296,7 +231,7 @@ export async function executeReal({ strategy, notionals, market, logger, relayer
 
   if (twilightLeg && shouldRunTwilightCli()) {
     const env = mergedRelayerEnv(relayerEnv);
-    const accountIndex =
+    const defaultIdx =
       env.TWILIGHT_ACCOUNT_INDEX != null && String(env.TWILIGHT_ACCOUNT_INDEX).trim() !== ''
         ? String(env.TWILIGHT_ACCOUNT_INDEX).trim()
         : '0';
@@ -309,7 +244,7 @@ export async function executeReal({ strategy, notionals, market, logger, relayer
         'Twilight order needs wallet id and passphrase in a non-interactive run. Fill wallet + password in Twilight wallet (step 1) when you click Real, or set NYKS_WALLET_ID and NYKS_WALLET_PASSPHRASE in the environment.'
       );
     }
-    const idxNum = Number(accountIndex);
+    const idxNum = Number(defaultIdx);
     const listArgs = [
       'wallet',
       'accounts',
@@ -330,46 +265,119 @@ export async function executeReal({ strategy, notionals, market, logger, relayer
     }
     const indices = parseZkOsAccountIndicesFromAccountsStdout(listed.stdout);
     const want = Number.isFinite(idxNum) ? idxNum : 0;
-    if (!indices.includes(want)) {
-      const have = indices.length ? indices.join(', ') : '(none — wallet has no ZkOS accounts yet)';
+    if (!indices.length) {
       throw new Error(
-        `[ZKOS_PREFLIGHT] Real run blocked — ZkOS account index ${want} is not available for wallet "${walletId}". ` +
-          `Known indices: ${have}.\n` +
-          '“No ZkOS accounts found” means you still need a first fund: use ZkOS (step 3b) → Fund account with spendable on-chain sats, then set TWILIGHT_ACCOUNT_INDEX to an index that exists (often 0 after first fund).'
+        `[ZKOS_PREFLIGHT] No ZkOS account indices parsed for wallet "${walletId}". ` +
+          'Fund a first ZkOS account (zkaccount fund) or confirm `wallet accounts --json` returns account rows.'
       );
     }
-    const ioType = parseZkOsIoTypeForAccountIndex(listed.stdout, want);
-    if (ioType && /^memo$/i.test(ioType)) {
-      throw new Error(
-        `[ZKOS_PREFLIGHT] ZkOS account index ${want} has io_type **Memo** (locked while an order / memo state is active). ` +
-          'Open-trade requires a **Coin** (idle) account. Pick a Coin row in the dashboard ZkOS list, run a real trade again (the UI index is sent with the request), or rotate with `zkaccount transfer` after a settled close.'
-      );
+    const autoPick = automation.autoPickZkOsAccount !== false;
+    let accountIndex = defaultIdx;
+    if (autoPick) {
+      const picked = pickZkOsIndexForOpenTrade(listed.stdout, defaultIdx, { logger });
+      accountIndex = picked.index;
+      const pNum = Number(accountIndex);
+      if (!indices.includes(pNum)) {
+        throw new Error(
+          `[ZKOS_PREFLIGHT] Auto-picked index ${accountIndex} is not in parsed index list [${indices.join(', ')}]. ` +
+            'Relayer JSON shape may be unsupported — check wallet accounts output or disable automation.autoPickZkOsAccount.'
+        );
+      }
+    } else {
+      if (!indices.includes(want)) {
+        const have = indices.length ? indices.join(', ') : '(none — wallet has no ZkOS accounts yet)';
+        throw new Error(
+          `[ZKOS_PREFLIGHT] Real run blocked — ZkOS account index ${want} is not available for wallet "${walletId}". ` +
+            `Known indices: ${have}.\n` +
+            '“No ZkOS accounts found” means you still need a first fund: use ZkOS (step 3b) → Fund account with spendable on-chain sats, then set TWILIGHT_ACCOUNT_INDEX to an index that exists (often 0 after first fund).'
+        );
+      }
+      const row = parseZkOsAccountRows(listed.stdout).find((r) => r.index === want);
+      const ioType = row?.ioType ?? null;
+      if (ioType && /^memo$/i.test(ioType)) {
+        throw new Error(
+          `[ZKOS_PREFLIGHT] ZkOS account index ${want} has io_type **Memo** (locked while an order / memo state is active). ` +
+            'Open-trade requires a **Coin** (idle) account, or enable auto-pick in configs/agent.monitor.yaml (automation.autoPickZkOsAccount).'
+        );
+      }
     }
-    // Pass credentials on argv so relayer does not try to read a TTY (headless spawn has no /dev/tty → errno 6 on macOS).
-    // Omit --no-wait: some relayer-cli builds do not support it.
-    const args = [
-      'order',
-      'open-trade',
-      '--wallet-id',
-      walletId,
-      '--password',
-      password,
-      '--account-index',
-      String(accountIndex),
-      '--side',
-      side,
-      '--entry-price',
-      String(price),
-      '--leverage',
-      lev,
-      '--order-type',
-      'MARKET',
-      '--json',
-    ];
-    results.twilight = await runRelayerCli(args, logger, relayerEnv, {
-      cwd: relayerCwd,
-    });
-    results.twilightAccountIndex = Number(accountIndex);
+    const maxAttempts = Math.min(
+      5,
+      Math.max(1, Number.isFinite(Number(automation.openTradeMaxZkAttempts)) ? Math.floor(Number(automation.openTradeMaxZkAttempts)) : 3)
+    );
+    const triedOpen = new Set();
+    let listedForOpen = listed;
+    let openAttempt = 0;
+    const errorsByIndex = [];
+
+    for (; openAttempt < maxAttempts; openAttempt++) {
+      if (openAttempt > 0) {
+        if (!autoPick) break;
+        try {
+          listedForOpen = await runRelayerCli(listArgs, logger, relayerEnv, { cwd: relayerCwd });
+        } catch (e) {
+          throw new Error(
+            `[ZKOS_RETRY] Re-list accounts before retry failed: ${e?.message || String(e)}`
+          );
+        }
+        const next = pickNextCoinZkOsIndexAfterFailure(listedForOpen.stdout, triedOpen, { logger });
+        accountIndex = next.index;
+      }
+
+      const pNum = Number(accountIndex);
+      const indicesNow = parseZkOsAccountIndicesFromAccountsStdout(listedForOpen.stdout);
+      if (!indicesNow.includes(pNum)) {
+        throw new Error(
+          `[ZKOS_PREFLIGHT] Index ${accountIndex} not in parsed list [${indicesNow.join(', ')}] after list refresh.`
+        );
+      }
+
+      const args = [
+        'order',
+        'open-trade',
+        '--wallet-id',
+        walletId,
+        '--password',
+        password,
+        '--account-index',
+        String(accountIndex),
+        '--side',
+        side,
+        '--entry-price',
+        String(price),
+        '--leverage',
+        lev,
+        '--order-type',
+        'MARKET',
+        '--json',
+      ];
+      try {
+        results.twilight = await runRelayerCli(args, logger, relayerEnv, {
+          cwd: relayerCwd,
+        });
+        results.twilightAccountIndex = Number(accountIndex);
+        if (openAttempt > 0) {
+          results.twilightOpenRetryCount = openAttempt;
+          logger.info(`[ZKOS_RETRY] open-trade succeeded on attempt ${openAttempt + 1} (index ${accountIndex}).`);
+        }
+        break;
+      } catch (e) {
+        const msg = e?.message || String(e);
+        errorsByIndex.push({ index: accountIndex, message: msg });
+        triedOpen.add(pNum);
+        const canRetry =
+          autoPick &&
+          openAttempt < maxAttempts - 1 &&
+          shouldRetryTwilightOpenAfterZkRefresh(msg);
+        if (!canRetry) {
+          const chain = errorsByIndex.map((x) => `index ${x.index}: ${x.message}`).join('\n---\n');
+          throw new Error(
+            `${msg}\n\n[ZKOS_RETRY] Gave up after ${openAttempt + 1} attempt(s) on Twilight open-trade.\n${chain}`
+          );
+        }
+        logger.warn(`[ZKOS_RETRY] open-trade attempt ${openAttempt + 1}/${maxAttempts} failed on index ${accountIndex}: ${msg}`);
+      }
+    }
   } else if (twilightLeg) {
     const reason = twilightCliExplicitlyDisabled()
       ? 'Twilight leg skipped (ALLOW_TWILIGHT_CLI_EXECUTION=0).'

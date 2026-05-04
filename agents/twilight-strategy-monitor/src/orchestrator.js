@@ -1,5 +1,11 @@
 import { fetchStrategies, fetchMarket, fetchStrategyById } from './strategyClient.js';
-import { cexVenue, pickTopStrategy, scaleStrategyToTargetTotalNotional, cexSizeUsd } from './normalize.js';
+import {
+  cexVenue,
+  pickTopStrategy,
+  scaleStrategyToTargetTotalNotional,
+  cexSizeUsd,
+  filterStrategiesForMonitor,
+} from './normalize.js';
 import { evaluateRisk } from './riskEngine.js';
 import { addLogicalTrade } from './portfolio.js';
 import { executeSimulation } from './executor/simulation.js';
@@ -109,6 +115,7 @@ async function executeChosenStrategy({ strategy, config, portfolio, market, logg
     logger,
     relayerEnv,
     relayerCwd: config.repoRoot,
+    automation: config.automation || {},
   });
 
   const apyNum = Number(strategy.apy) || 0;
@@ -168,13 +175,18 @@ export async function runOneCycle({ config, portfolio, logger }) {
     logger
   );
 
-  const strategies = data.strategies || [];
+  let strategies = data.strategies || [];
+  strategies = filterStrategiesForMonitor(strategies, config.strategyFilters || {}, logger);
   if (strategies.length === 0) {
-    logger.info('No strategies returned after filters.');
+    logger.info('No strategies returned after API + desk filters (CEX / risk allowlist).');
     return { skipped: true, reason: 'no_strategies' };
   }
 
   const strategy = pickTopStrategy(strategies);
+  if (!strategy) {
+    logger.info('No strategy available after ranking.');
+    return { skipped: true, reason: 'no_strategies' };
+  }
   logger.info(`Top strategy: #${strategy.id} ${strategy.name} APY=${strategy.apy}`);
 
   return executeChosenStrategy({ strategy, config, portfolio, market, logger });
