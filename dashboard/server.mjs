@@ -10,6 +10,7 @@ import { registerDashboardDataRoutes } from './lib/dashboard-data-routes.mjs';
 import { registerEnvRoutes } from './lib/env-routes.mjs';
 import { getPositionPnlSummary } from './lib/position-ledger.mjs';
 import { executeFullPositionClose } from './lib/position-close-service.mjs';
+import { runPositionAutoClosePass } from './lib/position-auto-close.mjs';
 import { getTradeDeskSnapshot } from './lib/trade-desk.mjs';
 import { registerRelayerRoutes } from './lib/relayer-routes.mjs';
 import { sanitizeString } from './lib/relayer-cli.mjs';
@@ -272,6 +273,27 @@ const onListen = () => {
     );
   }
 };
+const _autoCloseMs = Number(process.env.POSITION_AUTO_CLOSE_INTERVAL_MS);
+const AUTO_CLOSE_INTERVAL_MS =
+  Number.isFinite(_autoCloseMs) && _autoCloseMs >= 15000 ? _autoCloseMs : 45000;
+setInterval(() => {
+  runPositionAutoClosePass().then((out) => {
+    if (out.skipped || (!out.closed?.length && !out.errors?.length)) return;
+    if (out.closed?.length) {
+      for (const c of out.closed) {
+        console.log(
+          `[dashboard] position auto-close ${c.tradeId}: ${(c.reasons || []).join('; ')}`
+        );
+      }
+    }
+    if (out.errors?.length) {
+      for (const e of out.errors) {
+        console.warn(`[dashboard] position auto-close failed ${e.tradeId}: ${e.error}`);
+      }
+    }
+  });
+}, AUTO_CLOSE_INTERVAL_MS);
+
 if (HOST) {
   app.listen(PORT, HOST, onListen);
 } else {

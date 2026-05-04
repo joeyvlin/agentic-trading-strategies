@@ -20,6 +20,7 @@ export function readAgentSettings() {
     risk: doc.risk || {},
     execution: doc.execution || { mode: 'simulation' },
     automation: doc.automation || {},
+    positionAutoClose: doc.positionAutoClose || {},
   };
 }
 
@@ -50,6 +51,22 @@ export function writeAgentSettings(partial) {
   }
   if (partial.automation && typeof partial.automation === 'object') {
     doc.automation = { ...(doc.automation || {}), ...partial.automation };
+  }
+  if (partial.positionAutoClose != null && typeof partial.positionAutoClose === 'object') {
+    const src = partial.positionAutoClose;
+    const cur = { ...(doc.positionAutoClose || {}) };
+    const norm = (v) => {
+      if (v === '' || v === undefined || v === null) return null;
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+    if ('lossPctOfInitialNotional' in src) cur.lossPctOfInitialNotional = norm(src.lossPctOfInitialNotional);
+    if ('profitPctOfInitialNotional' in src)
+      cur.profitPctOfInitialNotional = norm(src.profitPctOfInitialNotional);
+    if ('maxHoldMinutes' in src) cur.maxHoldMinutes = norm(src.maxHoldMinutes);
+    const kept = Object.fromEntries(Object.entries(cur).filter(([, v]) => v != null));
+    if (Object.keys(kept).length) doc.positionAutoClose = kept;
+    else delete doc.positionAutoClose;
   }
   const tmp = `${p}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, yaml.dump(doc, { lineWidth: 120, noRefs: true, sortKeys: false }), 'utf8');

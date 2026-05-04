@@ -44,6 +44,27 @@
 
     <div id="dashboard-toasts" class="dashboard-toasts" aria-live="polite" aria-relevant="additions"></div>
 
+    <div
+      id="modal-dashboard-result"
+      class="modal-overlay modal-dashboard-result-overlay"
+      hidden
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-dashboard-result-title"
+    >
+      <div class="modal-dialog card modal-dashboard-result-dialog" id="modal-dashboard-result-dialog">
+        <div class="modal-head">
+          <h2 id="modal-dashboard-result-title" class="modal-title">Result</h2>
+        </div>
+        <p class="muted small modal-dashboard-result-sub" id="modal-dashboard-result-sub"></p>
+        <pre class="out modal-dashboard-result-body" id="modal-dashboard-result-body"></pre>
+        <div class="btn-row modal-actions">
+          <button type="button" class="btn primary" id="modal-dashboard-result-ok">OK</button>
+        </div>
+      </div>
+    </div>
+
     <main class="grid flow-grid">
       <div class="desk-tabs desk-span-all" role="tablist" aria-label="Desk mode">
         <button
@@ -84,6 +105,7 @@
 
       <nav class="flow-nav flow-nav-automated desk-span-all" aria-label="Automated desk" hidden>
         <a href="#sec-agent" class="desk-link-automated">Automated trading</a>
+        <a href="#sec-agent-pnl-auto">P&amp;L</a>
         <a href="#sec-advanced" class="desk-link-automated">Advanced</a>
         <span class="desk-nav-sep muted small" aria-hidden="true">·</span>
         <span class="muted small">Setup:</span>
@@ -614,7 +636,7 @@
 
       <section class="card wide" id="sec-agent-pnl">
         <div class="card-head">
-          <h2><span class="step-num">6</span> Agent P&amp;L (positions)</h2>
+          <h2>Agent P&amp;L (positions)</h2>
           <button type="button" class="btn small" id="btn-pnl-refresh">Refresh</button>
         </div>
         <p class="muted" id="pnl-note-line"></p>
@@ -727,7 +749,7 @@
         hidden
       >
         <section class="card wide" id="sec-agent">
-          <h2><span class="step-num">8</span> Automated trading</h2>
+          <h2>Automated trading</h2>
           <p class="muted">
             Stay-alive monitor: <strong>one</strong> loop at a time polls the Strategy API on <code>pollIntervalMs</code> for the newest
             strategies, applies CEX / risk filters, enforces caps, then executes in <strong>simulation</strong> or <strong>real</strong> per
@@ -754,7 +776,7 @@
               <li>CEX keys for real legs — <a href="#sec-keys" class="desk-link-manual" data-sec="sec-keys">CEX keys</a></li>
               <li>Funded ZkOS index — <a href="#sec-zkos" class="desk-link-manual" data-sec="sec-zkos">ZkOS</a></li>
               <li>Session wallet + allow real for <strong>real</strong> — <a href="#sec-wallet" class="desk-link-manual" data-sec="sec-wallet">Wallet</a></li>
-              <li>Ledger &amp; venue view — <a href="#sec-agent-pnl" class="desk-link-manual" data-sec="sec-agent-pnl">P&amp;L</a>,
+              <li>Ledger &amp; venue view — <a href="#sec-agent-pnl-auto">P&amp;L</a> (this tab),
                 <a href="#sec-trade-desk" class="desk-link-manual" data-sec="sec-trade-desk">Trades</a></li>
               <li>Raw YAML / sim / logs — <a href="#sec-advanced">Advanced</a> (summary block below)</li>
             </ul>
@@ -829,6 +851,29 @@
               <span>Max Twilight open-trade attempts (1–5)</span>
               <input type="text" id="agent-open-trade-max-zk" inputmode="numeric" placeholder="3" title="Re-list ZkOS accounts and try the next Coin index after recoverable errors when auto-pick is on." />
             </label>
+            <p class="muted small wide" style="grid-column: 1 / -1">
+              <strong>Auto-close open positions</strong> (position ledger): the server re-evaluates about every 45s
+              (<code>POSITION_AUTO_CLOSE_INTERVAL_MS</code> optional, minimum 15s). Rules apply to <strong>all</strong> open
+              rows (existing and new). Loss/profit compare unrealized $ to the trade’s initial notional at open
+              (<code>notionalUsd</code>, with fallbacks for older rows). <strong>Real</strong> closes need the same
+              wallet, relayer, and CEX gates as manual <strong>Close</strong> in P&amp;L — otherwise auto-close logs an
+              error and leaves the row open. Leave a field empty to disable that rule.
+              Values are written to <code>configs/agent.monitor.yaml</code> under <code>positionAutoClose</code> when you
+              click <strong>Save agent settings</strong> (the Advanced YAML editor is refreshed from disk afterward so it
+              does not overwrite them with stale text).
+            </p>
+            <label class="field">
+              <span>Close if loss ≥ % of initial notional</span>
+              <input type="text" id="agent-auto-close-loss-pct" inputmode="decimal" placeholder="e.g. 5" />
+            </label>
+            <label class="field">
+              <span>Close if profit ≥ % of initial notional</span>
+              <input type="text" id="agent-auto-close-profit-pct" inputmode="decimal" placeholder="e.g. 10" />
+            </label>
+            <label class="field">
+              <span>Close if open ≥ minutes</span>
+              <input type="text" id="agent-auto-close-max-min" inputmode="numeric" placeholder="e.g. 120" />
+            </label>
           </div>
           <div class="btn-row">
             <button type="button" class="btn primary" id="btn-save-agent">Save agent settings</button>
@@ -848,6 +893,44 @@
           </div>
           <p class="hint" id="last-cycle"></p>
           <pre class="out out-compact monitor-error-detail" id="monitor-error-detail" hidden></pre>
+        </section>
+
+        <section class="card wide" id="sec-agent-pnl-auto" aria-label="Agent P&amp;L (same data as Manual tab)">
+          <div class="card-head">
+            <h2>Agent P&amp;L (positions)</h2>
+            <button type="button" class="btn small" id="btn-pnl-refresh-auto">Refresh</button>
+          </div>
+          <p class="muted" id="pnl-note-line-auto"></p>
+          <dl class="stats stats-cols" id="pnl-stats-auto"></dl>
+          <h3 class="subhead">Open (unrealized)</h3>
+          <p class="muted small">Click a row (not <strong>Close</strong>) for leg notionals, direction, leverage, and venue snapshot.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Strategy</th>
+                  <th>Mode</th>
+                  <th>Entry BTC</th>
+                  <th>Unreal $</th>
+                  <th>Close (venues + ledger)</th>
+                </tr>
+              </thead>
+              <tbody id="positions-open-body-auto"></tbody>
+            </table>
+          </div>
+          <h3 class="subhead">Closed (realized)</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Closed</th>
+                  <th>Strategy</th>
+                  <th>Realized $</th>
+                </tr>
+              </thead>
+              <tbody id="positions-closed-body-auto"></tbody>
+            </table>
+          </div>
         </section>
 
         <details class="card wide advanced-block" id="sec-advanced">
@@ -871,7 +954,7 @@
 
             <section class="card inner-card">
               <h2>Portfolio reset</h2>
-              <p class="muted">Clears in-memory agent portfolio snapshot only (not the position ledger in step 6).</p>
+              <p class="muted">Clears in-memory agent portfolio snapshot only (not the position ledger in Agent P&amp;L).</p>
               <button type="button" class="btn ghost small" id="btn-reset-portfolio">Reset portfolio state</button>
             </section>
 

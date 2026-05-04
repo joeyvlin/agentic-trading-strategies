@@ -181,6 +181,63 @@ function showSectionAlert(variant, message, context) {
   return true;
 }
 
+/** After section alert / toast, modal OK dismiss (Escape / overlay click also close). */
+function closeDashboardResultModal() {
+  const overlay = document.getElementById('modal-dashboard-result');
+  if (!overlay) return;
+  overlay.hidden = true;
+  overlay.setAttribute('aria-hidden', 'true');
+}
+
+function dashboardResultModalOnKeydown(ev) {
+  if (ev.key !== 'Escape') return;
+  const overlay = document.getElementById('modal-dashboard-result');
+  if (!overlay || overlay.hidden) return;
+  ev.preventDefault();
+  closeDashboardResultModal();
+}
+
+function openDashboardResultModal(variant, context, message) {
+  const overlay = document.getElementById('modal-dashboard-result');
+  const titleEl = document.getElementById('modal-dashboard-result-title');
+  const subEl = document.getElementById('modal-dashboard-result-sub');
+  const bodyEl = document.getElementById('modal-dashboard-result-body');
+  const dialog = document.getElementById('modal-dashboard-result-dialog');
+  if (!overlay || !titleEl || !bodyEl || !dialog) return;
+
+  const ctx = String(context || '').trim();
+  const variantTitle =
+    variant === 'error' ? 'Error' : variant === 'success' ? 'Success' : 'Notice';
+  titleEl.textContent = variantTitle;
+  if (subEl) {
+    subEl.textContent = ctx || '';
+    subEl.style.display = ctx ? 'block' : 'none';
+  }
+
+  bodyEl.textContent = String(message || '').trim() || (variant === 'error' ? 'Unknown error' : '');
+
+  dialog.classList.remove('modal-result--error', 'modal-result--warn', 'modal-result--success');
+  dialog.classList.add(
+    variant === 'error' ? 'modal-result--error' : variant === 'success' ? 'modal-result--success' : 'modal-result--warn'
+  );
+
+  overlay.hidden = false;
+  overlay.setAttribute('aria-hidden', 'false');
+  requestAnimationFrame(() => {
+    document.getElementById('modal-dashboard-result-ok')?.focus();
+  });
+}
+
+function initDashboardResultModal() {
+  const overlay = document.getElementById('modal-dashboard-result');
+  if (!overlay) return;
+  document.addEventListener('keydown', dashboardResultModalOnKeydown);
+  document.getElementById('modal-dashboard-result-ok')?.addEventListener('click', closeDashboardResultModal);
+  overlay.addEventListener('click', (ev) => {
+    if (ev.target === overlay) closeDashboardResultModal();
+  });
+}
+
 function formatRequestForError(path, opts = {}) {
   const method = String(opts.method || 'GET').toUpperCase();
   let extra = '';
@@ -241,66 +298,78 @@ function parseApiErrorBody(text, status) {
 function showDashboardError(message, context = '') {
   const msg = String(message || 'Unknown error').trim() || 'Unknown error';
   const ctx = context || 'Error';
-  if (showSectionAlert('error', msg, ctx)) return;
-  const wrap = document.getElementById('dashboard-toasts');
-  if (!wrap) return;
-  const el = document.createElement('div');
-  el.className = 'dashboard-toast dashboard-toast-error';
-  el.setAttribute('role', 'alert');
-  el.innerHTML = `
+  const inSection = showSectionAlert('error', msg, ctx);
+  if (!inSection) {
+    const wrap = document.getElementById('dashboard-toasts');
+    if (wrap) {
+      const el = document.createElement('div');
+      el.className = 'dashboard-toast dashboard-toast-error';
+      el.setAttribute('role', 'alert');
+      el.innerHTML = `
     <div class="dashboard-toast-head">
       <span class="dashboard-toast-ctx">${escapeHtml(ctx)}</span>
       <button type="button" class="btn ghost small dashboard-toast-dismiss" aria-label="Dismiss">×</button>
     </div>
     <pre class="dashboard-toast-body">${escapeHtml(msg)}</pre>
   `;
-  el.querySelector('.dashboard-toast-dismiss').addEventListener('click', () => el.remove());
-  wrap.prepend(el);
-  while (wrap.children.length > 12) wrap.lastChild.remove();
+      el.querySelector('.dashboard-toast-dismiss').addEventListener('click', () => el.remove());
+      wrap.prepend(el);
+      while (wrap.children.length > 12) wrap.lastChild.remove();
+    }
+  }
+  openDashboardResultModal('error', ctx, msg);
 }
 
 function showDashboardSuccess(message, context = '') {
   const msg = String(message || '').trim();
   if (!msg) return;
   const ctx = context || 'Done';
-  if (showSectionAlert('success', msg, ctx)) return;
-  const wrap = document.getElementById('dashboard-toasts');
-  if (!wrap) return;
-  const el = document.createElement('div');
-  el.className = 'dashboard-toast dashboard-toast-success';
-  el.setAttribute('role', 'status');
-  el.innerHTML = `
+  const inSection = showSectionAlert('success', msg, ctx);
+  if (!inSection) {
+    const wrap = document.getElementById('dashboard-toasts');
+    if (wrap) {
+      const el = document.createElement('div');
+      el.className = 'dashboard-toast dashboard-toast-success';
+      el.setAttribute('role', 'status');
+      el.innerHTML = `
     <div class="dashboard-toast-head">
       <span class="dashboard-toast-ctx">${escapeHtml(ctx)}</span>
       <button type="button" class="btn ghost small dashboard-toast-dismiss" aria-label="Dismiss">×</button>
     </div>
     <pre class="dashboard-toast-body">${escapeHtml(msg)}</pre>
   `;
-  el.querySelector('.dashboard-toast-dismiss').addEventListener('click', () => el.remove());
-  wrap.prepend(el);
-  while (wrap.children.length > 12) wrap.lastChild.remove();
+      el.querySelector('.dashboard-toast-dismiss').addEventListener('click', () => el.remove());
+      wrap.prepend(el);
+      while (wrap.children.length > 12) wrap.lastChild.remove();
+    }
+  }
+  openDashboardResultModal('success', ctx, msg);
 }
 
 function showDashboardWarning(message, context = '') {
   const msg = String(message || '').trim();
   if (!msg) return;
   const ctx = context || 'Notice';
-  if (showSectionAlert('warn', msg, ctx)) return;
-  const wrap = document.getElementById('dashboard-toasts');
-  if (!wrap) return;
-  const el = document.createElement('div');
-  el.className = 'dashboard-toast dashboard-toast-warn';
-  el.setAttribute('role', 'status');
-  el.innerHTML = `
+  const inSection = showSectionAlert('warn', msg, ctx);
+  if (!inSection) {
+    const wrap = document.getElementById('dashboard-toasts');
+    if (wrap) {
+      const el = document.createElement('div');
+      el.className = 'dashboard-toast dashboard-toast-warn';
+      el.setAttribute('role', 'status');
+      el.innerHTML = `
     <div class="dashboard-toast-head">
       <span class="dashboard-toast-ctx">${escapeHtml(ctx)}</span>
       <button type="button" class="btn ghost small dashboard-toast-dismiss" aria-label="Dismiss">×</button>
     </div>
     <pre class="dashboard-toast-body">${escapeHtml(msg)}</pre>
   `;
-  el.querySelector('.dashboard-toast-dismiss').addEventListener('click', () => el.remove());
-  wrap.prepend(el);
-  while (wrap.children.length > 12) wrap.lastChild.remove();
+      el.querySelector('.dashboard-toast-dismiss').addEventListener('click', () => el.remove());
+      wrap.prepend(el);
+      while (wrap.children.length > 12) wrap.lastChild.remove();
+    }
+  }
+  openDashboardResultModal('warn', ctx, msg);
 }
 
 async function readJson(path, opts = {}) {
@@ -454,7 +523,12 @@ function initDeskTabs() {
   } catch {
     /* ignore */
   }
-  if (location.hash === '#sec-agent' || location.hash === '#sec-advanced') initial = 'automated';
+  if (
+    location.hash === '#sec-agent' ||
+    location.hash === '#sec-advanced' ||
+    location.hash === '#sec-agent-pnl-auto'
+  )
+    initial = 'automated';
   setDeskTab(initial, { persist: false });
   if (location.hash === '#sec-advanced') {
     const det = document.getElementById('sec-advanced');
@@ -462,7 +536,11 @@ function initDeskTabs() {
   }
 
   window.addEventListener('hashchange', () => {
-    if (location.hash === '#sec-agent' || location.hash === '#sec-advanced') {
+    if (
+      location.hash === '#sec-agent' ||
+      location.hash === '#sec-advanced' ||
+      location.hash === '#sec-agent-pnl-auto'
+    ) {
       setDeskTab('automated');
       if (location.hash === '#sec-advanced') {
         const det = document.getElementById('sec-advanced');
@@ -1776,35 +1854,42 @@ async function refreshStatus(opts = {}) {
   }
 }
 
-async function refreshPnl(opts = {}) {
-  const el = document.getElementById('pnl-stats');
-  const note = document.getElementById('pnl-note-line');
-  const openBody = document.getElementById('positions-open-body');
-  const closedBody = document.getElementById('positions-closed-body');
-  try {
-    const p = await readJson('/api/pnl');
-    if (el) {
-      const stat = (label, value) =>
-        `<div class="stat-item"><dt>${label}</dt><dd>${value}</dd></div>`;
-      el.innerHTML = [
-        stat('Realized P&amp;L (closed)', fmtUsd(p.realizedPnlUsd)),
-        stat('Unrealized P&amp;L (open)', fmtUsd(p.unrealizedPnlUsd)),
-        stat('BTC mark', p.currentBtcPrice ? '$' + Number(p.currentBtcPrice).toLocaleString() : '—'),
-        stat('Open positions', String(p.openCount ?? 0)),
-        stat('Closed positions', String(p.closedCount ?? 0)),
-        stat('Agent tx log (rows)', String(p.transactionCount)),
-        stat('Illustrative daily (APY×notional)', fmtUsd(p.sumEstimatedDailyUsd)),
-        stat('Open notional (portfolio)', fmtUsd(p.openNotionalUsd)),
-      ].join('');
-    }
-    if (note) note.textContent = p.pnlNote || '';
+const PNL_DOM_SLOTS = [
+  { stats: 'pnl-stats', note: 'pnl-note-line', open: 'positions-open-body', closed: 'positions-closed-body' },
+  {
+    stats: 'pnl-stats-auto',
+    note: 'pnl-note-line-auto',
+    open: 'positions-open-body-auto',
+    closed: 'positions-closed-body-auto',
+  },
+];
 
-    const opens = p.openPositions || [];
-    lastOpenPositions = opens.slice();
-    if (openBody) {
-      openBody.innerHTML = opens
-        .map(
-          (o) => `
+function renderPnlIntoSlot(slot, p) {
+  const el = document.getElementById(slot.stats);
+  const note = document.getElementById(slot.note);
+  const openBody = document.getElementById(slot.open);
+  const closedBody = document.getElementById(slot.closed);
+  if (el) {
+    const stat = (label, value) =>
+      `<div class="stat-item"><dt>${label}</dt><dd>${value}</dd></div>`;
+    el.innerHTML = [
+      stat('Realized P&amp;L (closed)', fmtUsd(p.realizedPnlUsd)),
+      stat('Unrealized P&amp;L (open)', fmtUsd(p.unrealizedPnlUsd)),
+      stat('BTC mark', p.currentBtcPrice ? '$' + Number(p.currentBtcPrice).toLocaleString() : '—'),
+      stat('Open positions', String(p.openCount ?? 0)),
+      stat('Closed positions', String(p.closedCount ?? 0)),
+      stat('Agent tx log (rows)', String(p.transactionCount)),
+      stat('Illustrative daily (APY×notional)', fmtUsd(p.sumEstimatedDailyUsd)),
+      stat('Open notional (portfolio)', fmtUsd(p.openNotionalUsd)),
+    ].join('');
+  }
+  if (note) note.textContent = p.pnlNote || '';
+
+  const opens = p.openPositions || [];
+  if (openBody) {
+    openBody.innerHTML = opens
+      .map(
+        (o) => `
         <tr class="pos-open-row" data-pos-tid="${escapeHtml(o.tradeId)}">
           <td>#${o.strategyId} ${escapeHtml(o.strategyName || '')}</td>
           <td>${escapeHtml(o.mode || '')}</td>
@@ -1815,35 +1900,50 @@ async function refreshPnl(opts = {}) {
             <button type="button" class="btn small primary pos-close-btn" data-tid="${escapeHtml(o.tradeId)}" data-mode="${escapeHtml(o.mode || '')}" data-mtm-usd="${Number.isFinite(Number(o.unrealizedPnlUsd)) ? Number(o.unrealizedPnlUsd) : 0}">Close</button>
           </td>
         </tr>`
-        )
-        .join('');
-      if (!opens.length) openBody.innerHTML = `<tr><td colspan="5">No open positions. Run a strategy (Sim) to open one.</td></tr>`;
-    }
+      )
+      .join('');
+    if (!opens.length)
+      openBody.innerHTML = `<tr><td colspan="5">No open positions. Run a strategy (Sim) to open one.</td></tr>`;
+  }
 
-    const closed = p.closedPositions || [];
-    if (closedBody) {
-      closedBody.innerHTML = closed
-        .map(
-          (c) => `
+  const closed = p.closedPositions || [];
+  if (closedBody) {
+    closedBody.innerHTML = closed
+      .map(
+        (c) => `
         <tr>
           <td>${fmtTime(c.closedAt)}</td>
           <td>#${c.strategyId} ${escapeHtml(c.strategyName || '')}</td>
           <td>${fmtUsd(c.realizedPnlUsd)}</td>
         </tr>`
-        )
-        .join('');
-      if (!closed.length) {
-        closedBody.innerHTML = `<tr><td colspan="3">No closed positions yet. Use Close on an open row (real = venue exits + ledger).</td></tr>`;
-      }
+      )
+      .join('');
+    if (!closed.length) {
+      closedBody.innerHTML = `<tr><td colspan="3">No closed positions yet. Use Close on an open row (real = venue exits + ledger).</td></tr>`;
+    }
+  }
+}
+
+async function refreshPnl(opts = {}) {
+  try {
+    const p = await readJson('/api/pnl');
+    const opens = p.openPositions || [];
+    lastOpenPositions = opens.slice();
+    for (const slot of PNL_DOM_SLOTS) {
+      if (document.getElementById(slot.stats)) renderPnlIntoSlot(slot, p);
     }
   } catch (e) {
     if (!shouldSurfaceFetchError(e, opts)) return;
     const m = errMsg(e);
     lastOpenPositions = [];
-    if (el)
-      el.innerHTML = `<div class="stat-item"><dt>Error</dt><dd>${escapeHtml(m)}</dd></div>`;
-    if (openBody) openBody.innerHTML = '';
-    if (closedBody) closedBody.innerHTML = '';
+    for (const slot of PNL_DOM_SLOTS) {
+      const el = document.getElementById(slot.stats);
+      const openBody = document.getElementById(slot.open);
+      const closedBody = document.getElementById(slot.closed);
+      if (el) el.innerHTML = `<div class="stat-item"><dt>Error</dt><dd>${escapeHtml(m)}</dd></div>`;
+      if (openBody) openBody.innerHTML = '';
+      if (closedBody) closedBody.innerHTML = '';
+    }
     if (opts.userAction) showDashboardError(m, 'Agent PnL');
   }
 }
@@ -2514,6 +2614,22 @@ async function loadAgentSettings(opts = {}) {
     if (pzi) pzi.checked = s.automation?.persistTwilightIndexAfterRotate !== false;
     const otz = s.automation?.openTradeMaxZkAttempts;
     set('agent-open-trade-max-zk', otz != null && Number(otz) >= 1 ? otz : '');
+    const pac = s.positionAutoClose || {};
+    const lp = pac.lossPctOfInitialNotional;
+    const pp = pac.profitPctOfInitialNotional;
+    const mm = pac.maxHoldMinutes;
+    set(
+      'agent-auto-close-loss-pct',
+      lp != null && Number.isFinite(Number(lp)) && Number(lp) > 0 ? lp : ''
+    );
+    set(
+      'agent-auto-close-profit-pct',
+      pp != null && Number.isFinite(Number(pp)) && Number(pp) > 0 ? pp : ''
+    );
+    set(
+      'agent-auto-close-max-min',
+      mm != null && Number.isFinite(Number(mm)) && Number(mm) > 0 ? mm : ''
+    );
     if (msg) {
       msg.textContent = '';
       msg.classList.remove('hint-error');
@@ -2559,8 +2675,15 @@ document.getElementById('btn-save-agent')?.addEventListener('click', async () =>
           openTradeMaxZkAttempts:
             Number(document.getElementById('agent-open-trade-max-zk')?.value) || 3,
         },
+        positionAutoClose: {
+          lossPctOfInitialNotional: document.getElementById('agent-auto-close-loss-pct')?.value,
+          profitPctOfInitialNotional: document.getElementById('agent-auto-close-profit-pct')?.value,
+          maxHoldMinutes: document.getElementById('agent-auto-close-max-min')?.value,
+        },
       }),
     });
+    await loadAgentSettings({ userAction: false });
+    await loadConfig({ userAction: false });
     if (msg) {
       msg.textContent = 'Saved.';
       msg.classList.remove('hint-error');
@@ -2700,7 +2823,9 @@ document.addEventListener('keydown', (ev) => {
   closeOpenPositionDetailsModal();
 });
 
-document.getElementById('positions-open-body')?.addEventListener('click', async (ev) => {
+function bindPositionsOpenBodyClick(tbody) {
+  if (!tbody) return;
+  tbody.addEventListener('click', async (ev) => {
   const closeBtn = ev.target.closest('.pos-close-btn');
   if (closeBtn) {
     const tid = closeBtn.getAttribute('data-tid');
@@ -2805,9 +2930,14 @@ document.getElementById('positions-open-body')?.addEventListener('click', async 
   if (!tid) return;
   const o = lastOpenPositions.find((x) => x.tradeId === tid);
   if (o) openOpenPositionDetailsModal(o);
-});
+  });
+}
+
+bindPositionsOpenBodyClick(document.getElementById('positions-open-body'));
+bindPositionsOpenBodyClick(document.getElementById('positions-open-body-auto'));
 
 document.getElementById('btn-pnl-refresh')?.addEventListener('click', () => refreshPnl({ userAction: true }));
+document.getElementById('btn-pnl-refresh-auto')?.addEventListener('click', () => refreshPnl({ userAction: true }));
 
 function envStatusBadge(row) {
   if (!row.hasValue) {
@@ -3815,6 +3945,7 @@ document.getElementById('btn-save-config')?.addEventListener('click', async () =
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content }),
     });
+    await loadAgentSettings({ userAction: false });
     if (msg) {
       msg.textContent = 'Saved.';
       msg.classList.remove('hint-error');
@@ -3948,6 +4079,7 @@ if (savedWalletSession?.password) {
 }
 
 initDeskTabs();
+initDashboardResultModal();
 initCollapsibleSections();
 rebuildZkosTransferFromSelect();
 syncZkosInspector();

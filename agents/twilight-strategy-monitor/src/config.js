@@ -70,16 +70,16 @@ export function loadAgentConfig(logger, options = {}) {
     pollIntervalMs: Number(doc.pollIntervalMs ?? 60000),
     strategyFilters: doc.strategyFilters || {},
     risk: {
-      maxTotalNotionalUsd: Number(doc.risk?.maxTotalNotionalUsd ?? 50_000),
+      maxTotalNotionalUsd: Number(doc.risk?.maxTotalNotionalUsd ?? 50),
       maxNotionalPerStrategyUsd:
         Number.isFinite(perStrat) && perStrat > 0 ? perStrat : Number.POSITIVE_INFINITY,
       maxNotionalPerVenueUsd: {
-        twilight: Number(doc.risk?.maxNotionalPerVenueUsd?.twilight ?? 25_000),
-        binance: Number(doc.risk?.maxNotionalPerVenueUsd?.binance ?? 25_000),
-        bybit: Number(doc.risk?.maxNotionalPerVenueUsd?.bybit ?? 25_000),
+        twilight: Number(doc.risk?.maxNotionalPerVenueUsd?.twilight ?? 50),
+        binance: Number(doc.risk?.maxNotionalPerVenueUsd?.binance ?? 50),
+        bybit: Number(doc.risk?.maxNotionalPerVenueUsd?.bybit ?? 50),
       },
-      maxConcurrentLogicalTrades: Number(doc.risk?.maxConcurrentLogicalTrades ?? 3),
-      maxDailyLossUsd: Number(doc.risk?.maxDailyLossUsd ?? 5000),
+      maxConcurrentLogicalTrades: Number(doc.risk?.maxConcurrentLogicalTrades ?? 5),
+      maxDailyLossUsd: Number(doc.risk?.maxDailyLossUsd ?? 20),
     },
     automation: {
       autoPickZkOsAccount: doc.automation?.autoPickZkOsAccount !== false,

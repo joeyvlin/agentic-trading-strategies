@@ -16,15 +16,15 @@ strategyFilters:
 # Risk limits (USD notionals where applicable; align with Strategy API field meanings)
 risk:
   # Hard cap on sum of open simulated/real notionals across venues
-  maxTotalNotionalUsd: 50000
+  maxTotalNotionalUsd: 50
   # Per-venue caps (twilight / binance / bybit)
   maxNotionalPerVenueUsd:
-    twilight: 25000
-    binance: 25000
-    bybit: 25000
-  maxConcurrentLogicalTrades: 3
+    twilight: 50
+    binance: 50
+    bybit: 50
+  maxConcurrentLogicalTrades: 5
   # Stop opening new trades after this much daily loss (simulated or tracked)
-  maxDailyLossUsd: 5000
+  maxDailyLossUsd: 20
   # maxNotionalPerStrategyUsd: 25000
 
 # Execution profile (overridden by AGENT_MODE env: simulation | real)
@@ -37,3 +37,9 @@ automation:
   autoPickZkOsAccount: true
   persistTwilightIndexAfterRotate: true
   # openTradeMaxZkAttempts: 3
+
+# Optional: dashboard server auto-closes ledger rows (same path as P&L Close). Empty / omit = disabled.
+# positionAutoClose:
+#   lossPctOfInitialNotional: 5
+#   profitPctOfInitialNotional: 15
+#   maxHoldMinutes: 180
