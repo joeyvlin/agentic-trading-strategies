@@ -1,0 +1,31 @@
+# Fails when skill mirrors under skills/twilight-protocol-agentskill/ drift from
+# twilight-project/agentskill + twilight-project/nyks-wallet default branch.
+
+name: Twilight skills upstream check
+
+on:
+  push:
+    paths:
+      - 'skills/twilight-protocol-agentskill/**'
+      - 'scripts/sync-twilight-skills.mjs'
+      - '.github/workflows/twilight-skills-upstream.yml'
+  pull_request:
+    paths:
+      - 'skills/twilight-protocol-agentskill/**'
+      - 'scripts/sync-twilight-skills.mjs'
+  schedule:
+    - cron: '0 12 * * 1'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Verify mirrors match upstream
+        run: node scripts/sync-twilight-skills.mjs --check
