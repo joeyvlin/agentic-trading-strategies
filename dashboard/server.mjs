@@ -8,7 +8,7 @@ import { registerAgentSettingsRoutes } from './lib/agent-settings-routes.mjs';
 import { createMonitorService } from './lib/monitor-service.mjs';
 import { registerDashboardDataRoutes } from './lib/dashboard-data-routes.mjs';
 import { registerEnvRoutes } from './lib/env-routes.mjs';
-import { getPositionPnlSummary } from './lib/position-ledger.mjs';
+import { getOpenPositionsSnapshot, getPositionPnlSummary } from './lib/position-ledger.mjs';
 import { executeFullPositionClose } from './lib/position-close-service.mjs';
 import { runPositionAutoClosePass } from './lib/position-auto-close.mjs';
 import { getTradeDeskSnapshot } from './lib/trade-desk.mjs';
@@ -124,6 +124,34 @@ app.post('/api/positions/:tradeId/close', requireToken, async (req, res) => {
   } catch (e) {
     return res.status(500).json({ error: e.message || String(e) });
   }
+});
+
+app.post('/api/positions/close-all', requireToken, async (req, res) => {
+  const wid = sanitizeString(req.body?.walletId ?? req.body?.wallet_id ?? '');
+  const pw = typeof req.body?.password === 'string' ? req.body.password : '';
+  const rows = getOpenPositionsSnapshot();
+  const out = {
+    ok: true,
+    requested: rows.length,
+    closed: [],
+    failed: [],
+  };
+  for (const row of rows) {
+    const tradeId = String(row?.tradeId || '').trim();
+    if (!tradeId) continue;
+    try {
+      const r = await executeFullPositionClose(tradeId, {
+        walletId: wid,
+        password: pw,
+      });
+      if (r?.ok) out.closed.push({ tradeId, mode: r.mode, realizedPnlUsd: r.realizedPnlUsd });
+      else out.failed.push({ tradeId, error: r?.error || 'Close failed' });
+    } catch (e) {
+      out.failed.push({ tradeId, error: e.message || String(e) });
+    }
+  }
+  out.ok = out.failed.length === 0;
+  res.json(out);
 });
 
 app.post('/api/monitor/run-strategy', requireToken, async (req, res) => {

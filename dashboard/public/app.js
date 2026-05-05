@@ -3911,7 +3911,36 @@ document.getElementById('btn-start')?.addEventListener('click', async () => {
 
 document.getElementById('btn-stop')?.addEventListener('click', async () => {
   try {
+    const openCount = Array.isArray(lastOpenPositions) ? lastOpenPositions.length : 0;
+    let closeAllFirst = false;
+    if (openCount > 0) {
+      closeAllFirst = confirm(
+        `There are ${openCount} open position(s). Click OK to close all now, or Cancel to keep them open and stop monitoring.`
+      );
+    }
+    if (closeAllFirst && openCount > 0) {
+      const payload = {};
+      const w = walletSession();
+      if (w.walletId) payload.walletId = w.walletId;
+      if (w.password) payload.password = w.password;
+      const bulk = await readJson('/api/positions/close-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (bulk?.failed?.length) {
+        const first = bulk.failed[0];
+        const msg = `Close-all finished with ${bulk.closed?.length || 0} success, ${
+          bulk.failed.length
+        } failed. First failure: ${first?.tradeId || '?'} - ${first?.error || 'unknown error'}`;
+        showDashboardWarning(msg, 'Close position');
+      } else if (bulk?.closed?.length) {
+        showDashboardSuccess(`Closed ${bulk.closed.length} position(s) before stopping monitor.`, 'Close position');
+      }
+    }
     await readJson('/api/monitor/stop', { method: 'POST' });
+    await refreshPnl({ userAction: true });
+    await refreshTradeDesk({ userAction: false });
     await refreshStatus({ userAction: true });
   } catch (e) {
     showDashboardError(errMsg(e), 'Stop monitor');

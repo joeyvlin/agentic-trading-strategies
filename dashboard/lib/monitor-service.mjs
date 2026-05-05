@@ -11,7 +11,7 @@ import {
   loadTransactions,
   savePortfolioSnapshot,
 } from './persistence.mjs';
-import { appendOpenPosition } from './position-ledger.mjs';
+import { appendOpenPosition, getOpenStrategyIds } from './position-ledger.mjs';
 import { loadExchangeKeys } from './exchange-keys-store.mjs';
 
 const MAX_LOGS = 200;
@@ -90,6 +90,7 @@ export function createMonitorService() {
   let lastErrorStack = null;
   let startedAt = null;
   let tickInFlight = false;
+  let timerIntervalMs = null;
   let recoveryTimeout = null;
   let recoveryInProgress = false;
   /** True while a post-failure timer restart is scheduled or running (avoids double setInterval on start). */
@@ -109,7 +110,12 @@ export function createMonitorService() {
         executionMode: executionModeOverride,
       });
       pollIntervalMs = config.pollIntervalMs;
-      const result = await runOneCycle({ config, portfolio, logger });
+      const result = await runOneCycle({
+        config,
+        portfolio,
+        logger,
+        blockedStrategyIds: getOpenStrategyIds(),
+      });
       lastCycle = {
         at: new Date().toISOString(),
         skipped: !!result.skipped,
@@ -150,6 +156,20 @@ export function createMonitorService() {
     pendingMonitorRecovery = false;
   }
 
+  function setMonitorInterval() {
+    if (timer) {
+      clearInterval(timer);
+      timer = null;
+    }
+    timerIntervalMs = null;
+    if (!running || userStopRequested || pollIntervalMs <= 0) return;
+    const run = () => {
+      void runMonitorPollCycle();
+    };
+    timer = setInterval(run, pollIntervalMs);
+    timerIntervalMs = pollIntervalMs;
+  }
+
   /**
    * If a poll cycle threw while the user still wants the monitor on, drop the old interval and start a fresh one
    * after a short backoff (debounced). Does nothing after `stop()`.
@@ -161,6 +181,7 @@ export function createMonitorService() {
       clearInterval(timer);
       timer = null;
     }
+    timerIntervalMs = null;
     pendingMonitorRecovery = true;
     logger.warn(
       `[monitor] Poll cycle failed; will restart monitor timer after ${monitorRestartBackoffMs}ms unless stopped. (${reason})`
@@ -173,10 +194,6 @@ export function createMonitorService() {
       }
       recoveryInProgress = true;
       try {
-        if (timer) {
-          clearInterval(timer);
-          timer = null;
-        }
         let cfg;
         try {
           cfg = loadAgentConfig(logger);
@@ -192,13 +209,10 @@ export function createMonitorService() {
           logger.warn('[monitor] Recovery aborted: pollIntervalMs is 0 (single-shot mode).');
           return;
         }
-        const run = () => {
-          void runMonitorPollCycle();
-        };
-        timer = setInterval(run, pollIntervalMs);
+        setMonitorInterval();
         pendingMonitorRecovery = false;
         logger.info('[monitor] Timer restarted after failure; running immediate poll.');
-        void run();
+        void runMonitorPollCycle();
       } catch (e) {
         logger.error(`[monitor] Recovery failed: ${e?.message || e}`);
         pendingMonitorRecovery = false;
@@ -217,6 +231,20 @@ export function createMonitorService() {
     tickInFlight = true;
     try {
       await tick();
+      if (
+        running &&
+        !userStopRequested &&
+        !pendingMonitorRecovery &&
+        pollIntervalMs > 0 &&
+        timer &&
+        timerIntervalMs != null &&
+        pollIntervalMs !== timerIntervalMs
+      ) {
+        logger.info(
+          `[monitor] pollIntervalMs updated (${timerIntervalMs} -> ${pollIntervalMs}); restarting timer with new interval.`
+        );
+        setMonitorInterval();
+      }
     } catch (e) {
       const msg = e?.message || String(e);
       scheduleMonitorRestartAfterFailure(msg);
@@ -274,12 +302,9 @@ export function createMonitorService() {
       startedAt = new Date().toISOString();
 
       try {
-        const run = () => {
-          void runMonitorPollCycle();
-        };
         await runMonitorPollCycle();
         if (pollIntervalMs > 0 && !timer && !pendingMonitorRecovery) {
-          timer = setInterval(run, pollIntervalMs);
+          setMonitorInterval();
         }
         if (pollIntervalMs <= 0) {
           running = false;
@@ -301,6 +326,7 @@ export function createMonitorService() {
         clearInterval(timer);
         timer = null;
       }
+      timerIntervalMs = null;
       running = false;
       startedAt = null;
       return { ok: true };

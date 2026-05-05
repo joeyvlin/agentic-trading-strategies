@@ -1,7 +1,6 @@
 import { fetchStrategies, fetchMarket, fetchStrategyById } from './strategyClient.js';
 import {
   cexVenue,
-  pickTopStrategy,
   scaleStrategyToTargetTotalNotional,
   cexSizeUsd,
   filterStrategiesForMonitor,
@@ -161,7 +160,7 @@ async function executeChosenStrategy({ strategy, config, portfolio, market, logg
   };
 }
 
-export async function runOneCycle({ config, portfolio, logger }) {
+export async function runOneCycle({ config, portfolio, logger, blockedStrategyIds }) {
   const key = config.strategyApiKey;
   if (!key) {
     logger.warn('STRATEGY_API_KEY is empty — Strategy API may return 401. Set it in .env');
@@ -177,19 +176,36 @@ export async function runOneCycle({ config, portfolio, logger }) {
 
   let strategies = data.strategies || [];
   strategies = filterStrategiesForMonitor(strategies, config.strategyFilters || {}, logger);
+  if (blockedStrategyIds && typeof blockedStrategyIds.has === 'function') {
+    const before = strategies.length;
+    strategies = strategies.filter((s) => !blockedStrategyIds.has(Number(s?.id)));
+    if (before !== strategies.length) {
+      logger.info(`[FILTER] skip already-open strategy ids: ${before} -> ${strategies.length}`);
+    }
+  }
   if (strategies.length === 0) {
     logger.info('No strategies returned after API + desk filters (CEX / risk allowlist).');
     return { skipped: true, reason: 'no_strategies' };
   }
 
-  const strategy = pickTopStrategy(strategies);
-  if (!strategy) {
+  const ranked = [...strategies].sort((a, b) => (Number(b?.apy) || 0) - (Number(a?.apy) || 0));
+  if (!ranked.length) {
     logger.info('No strategy available after ranking.');
     return { skipped: true, reason: 'no_strategies' };
   }
-  logger.info(`Top strategy: #${strategy.id} ${strategy.name} APY=${strategy.apy}`);
-
-  return executeChosenStrategy({ strategy, config, portfolio, market, logger });
+  const rejectReasons = [];
+  for (const strategy of ranked) {
+    logger.info(`Candidate strategy: #${strategy.id} ${strategy.name} APY=${strategy.apy}`);
+    const out = await executeChosenStrategy({ strategy, config, portfolio, market, logger });
+    if (!out?.skipped) return out;
+    rejectReasons.push(`#${strategy.id}: ${out.reason}${out.details?.length ? ` (${out.details.join('; ')})` : ''}`);
+  }
+  logger.info('All ranked strategies skipped this cycle.');
+  return {
+    skipped: true,
+    reason: 'all_candidates_skipped',
+    details: rejectReasons.slice(0, 12),
+  };
 }
 
 /**

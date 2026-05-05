@@ -57,6 +57,22 @@ export function getOpenPosition(tradeId) {
   return data.open.find((x) => x.tradeId === tradeId) || null;
 }
 
+export function getOpenPositionsSnapshot() {
+  const data = loadLedger();
+  return Array.isArray(data.open) ? [...data.open] : [];
+}
+
+/** Open strategy ids in the current ledger (used to avoid duplicate opens per strategy). */
+export function getOpenStrategyIds() {
+  const open = getOpenPositionsSnapshot();
+  const ids = new Set();
+  for (const row of open) {
+    const sid = Number(row?.strategyId);
+    if (Number.isFinite(sid)) ids.add(sid);
+  }
+  return ids;
+}
+
 export function appendOpenPosition({ transaction, strategy, marketSnapshot }) {
   if (!transaction?.tradeId || !strategy) return;
   const data = loadLedger();
