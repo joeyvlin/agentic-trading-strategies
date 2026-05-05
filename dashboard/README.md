@@ -63,3 +63,15 @@ The **Twilight relayer** card runs [nyks-wallet](https://github.com/twilight-pro
 **Signing:** There is no separate “sign raw tx” endpoint — the CLI signs when executing wallet/order flows. Use **Unlock** / session or env passphrases as in the [agentskill trader reference](https://github.com/twilight-project/agentskill).
 
 Read-only API examples: `GET /api/relayer/meta`, `POST /api/relayer/ping`, `POST /api/relayer/wallet/list`, `POST /api/relayer/market/price`. Wallet commands: `POST /api/relayer/wallet/balance` with optional JSON `{ "walletId", "password" }`. See `dashboard/lib/relayer-routes.mjs` for the full route list.
+
+## Twilight-bot (Agentic tab)
+
+Ways to get the **twilight-bot** source on disk:
+
+| Approach | When to use |
+|----------|-------------|
+| **Git submodule** (tracked in this repo) | `git submodule add https://github.com/runnerelectrode/twilight-bot.git external/twilight-bot` then set `TWILIGHT_BOT_REPO_DIR` to that path. |
+| **Manual clone** | `git clone …` anywhere; point `TWILIGHT_BOT_REPO_DIR` at the checkout. |
+| **Dashboard clone button** | Agentic → enable **Allow dashboard to clone repo** (`TWILIGHT_BOT_ALLOW_DASHBOARD_CLONE=YES`), save `.env`, then **Clone twilight-bot**. Clones into `TWILIGHT_BOT_REPO_DIR` if set, else `<repo>/external/twilight-bot` (gitignored), then writes `TWILIGHT_BOT_REPO_DIR` to `.env`. Only `https://github.com/org/repo(.git)` URLs are allowed (`TWILIGHT_BOT_GIT_URL`). |
+
+The dashboard does **not** add twilight-bot as an npm dependency; treat it as its own service (clone/submodule + `npm start` there).

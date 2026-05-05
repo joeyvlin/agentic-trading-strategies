@@ -44,6 +44,11 @@ export const ENV_GROUPS = [
     title: 'Agent monitor',
     help: 'Simulation vs real trading and safety gates.',
   },
+  {
+    id: 'twilight_bot',
+    title: 'Twilight-bot (Agentic tab)',
+    help: 'HTTP proxy + optional local spawn of the twilight-bot trade runtime.',
+  },
 ];
 
 /** @type {Array<{ key: string, group: string, label: string, help: string, secret?: boolean, type?: 'text'|'password'|'select', options?: string[] }>} */
@@ -280,6 +285,63 @@ export const ENV_DEFS = [
     type: 'text',
     /** Controlled from Twilight wallet section (toggle); omitted from the Environment form to avoid duplication. */
     hideFromEnvForm: true,
+  },
+  {
+    key: 'TWILIGHT_BOT_BASE_URL',
+    group: 'twilight_bot',
+    label: 'Twilight-bot HTTP base',
+    help: 'e.g. http://127.0.0.1:8787 — dashboard proxies API calls here.',
+    type: 'text',
+  },
+  {
+    key: 'TWILIGHT_BOT_API_TOKEN',
+    group: 'twilight_bot',
+    label: 'Twilight-bot bearer token',
+    help: 'Optional Authorization Bearer when twilight-bot uses BIND_PUBLIC + API_TOKEN.',
+    secret: true,
+    type: 'password',
+  },
+  {
+    key: 'TWILIGHT_BOT_TIMEOUT_MS',
+    group: 'twilight_bot',
+    label: 'Twilight-bot HTTP timeout ms',
+    help: 'Per upstream request from dashboard (default 15000).',
+    type: 'text',
+  },
+  {
+    key: 'TWILIGHT_BOT_REPO_DIR',
+    group: 'twilight_bot',
+    label: 'Twilight-bot repo directory',
+    help: 'Absolute path to a local twilight-bot checkout (for dashboard Start).',
+    type: 'text',
+  },
+  {
+    key: 'TWILIGHT_BOT_SPAWN',
+    group: 'twilight_bot',
+    label: 'Twilight-bot spawn command',
+    help: 'Shell command run in TWILIGHT_BOT_REPO_DIR (default npm start).',
+    type: 'text',
+  },
+  {
+    key: 'TWILIGHT_BOT_ALLOW_DASHBOARD_SPAWN',
+    group: 'twilight_bot',
+    label: 'Allow dashboard to spawn twilight-bot',
+    help: 'Must be YES for POST /api/twilight-bot/process/start from this server.',
+    type: 'text',
+  },
+  {
+    key: 'TWILIGHT_BOT_ALLOW_DASHBOARD_CLONE',
+    group: 'twilight_bot',
+    label: 'Allow dashboard to git-clone twilight-bot',
+    help: 'Must be YES for POST /api/twilight-bot/repo/clone (https GitHub URLs only).',
+    type: 'text',
+  },
+  {
+    key: 'TWILIGHT_BOT_GIT_URL',
+    group: 'twilight_bot',
+    label: 'Twilight-bot git clone URL',
+    help: 'Default: runnerelectrode/twilight-bot.git — must match https://github.com/org/repo(.git).',
+    type: 'text',
   },
 ];
 

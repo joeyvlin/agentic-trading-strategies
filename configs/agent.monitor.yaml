@@ -1,29 +1,21 @@
-pollIntervalMs: 60000
+pollIntervalMs: 20000
 strategyFilters:
   profitable: true
   limit: 5
-  # CEX leg filter after Strategy API response: any | binance | bybit
-  cexVenue: any
-  # Optional GET /api/strategies?risk=… (omit or use "any" for no server-side risk filter)
-  # risk: LOW
-  # Optional client-side allowlist (comma-separated), e.g. LOW,MEDIUM — leave empty with no risk= for any
-  # riskAllowlist: ""
+  cexVenue: bybit
+  riskAllowlist: ''
 risk:
-  maxTotalNotionalUsd: 50000
+  maxTotalNotionalUsd: 10
   maxNotionalPerVenueUsd:
-    twilight: 25000
-    binance: 25000
-    bybit: 25000
-  maxConcurrentLogicalTrades: 10
-  maxDailyLossUsd: 5000
-  # Cap on template total USD for a single strategy execution (omit or 0 for no cap)
-  maxNotionalPerStrategyUsd: 0
+    twilight: 50
+    binance: 50
+    bybit: 50
+  maxConcurrentLogicalTrades: 5
+  maxDailyLossUsd: 10
+  maxNotionalPerStrategyUsd: 5
 execution:
-  mode: simulation
+  mode: real
 automation:
-  # Prefer a Coin (idle) ZkOS index for open-trade; override TWILIGHT_ACCOUNT_INDEX when default is Memo
   autoPickZkOsAccount: true
-  # After dashboard close + zk rotate, write new index to .env (server-side)
   persistTwilightIndexAfterRotate: true
-  # Max Twilight open-trade attempts (re-list accounts + next Coin index) when auto-pick is on; 1–5
   openTradeMaxZkAttempts: 3

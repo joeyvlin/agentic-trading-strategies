@@ -724,6 +724,10 @@ pre.relayer-out {
   border-bottom: 1px solid var(--border);
 }
 
+.flow-nav[hidden] {
+  display: none !important;
+}
+
 .flow-nav a {
   font-size: 0.8rem;
   color: var(--muted);

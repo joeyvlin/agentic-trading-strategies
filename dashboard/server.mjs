@@ -15,6 +15,7 @@ import { getTradeDeskSnapshot } from './lib/trade-desk.mjs';
 import { registerRelayerRoutes } from './lib/relayer-routes.mjs';
 import { sanitizeString } from './lib/relayer-cli.mjs';
 import { getRepoRoot } from './lib/persistence.mjs';
+import { registerTwilightBotRoutes } from './lib/twilight-bot-routes.mjs';
 
 /** Load repo `.env` before anything reads `process.env` (e.g. TWILIGHT_RELAYER_CLI). */
 loadEnv();
@@ -288,6 +289,7 @@ registerAgentSettingsRoutes(app, { requireToken });
 registerRelayerRoutes(app, { requireToken });
 registerDashboardDataRoutes(app, { requireToken });
 registerEnvRoutes(app, { requireToken });
+registerTwilightBotRoutes(app, { requireToken });
 
 app.use(express.static(path.join(__dirname, 'public')));
 

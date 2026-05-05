@@ -87,6 +87,16 @@
         >
           Automated
         </button>
+        <button
+          type="button"
+          class="desk-tab"
+          role="tab"
+          id="tab-desk-agentic"
+          aria-selected="false"
+          aria-controls="desk-panel-agentic"
+        >
+          Agentic
+        </button>
       </div>
 
       <nav class="flow-nav flow-nav-manual desk-span-all" aria-label="Manual sections">
@@ -113,6 +123,17 @@
         <a href="#sec-wallet" class="desk-link-manual" data-sec="sec-wallet">Wallet</a>
         <a href="#sec-keys" class="desk-link-manual" data-sec="sec-keys">CEX keys</a>
         <a href="#sec-zkos" class="desk-link-manual" data-sec="sec-zkos">ZkOS</a>
+      </nav>
+
+      <nav class="flow-nav flow-nav-agentic desk-span-all" aria-label="Agentic sections" hidden>
+        <a href="#sec-agentic-runtime">Runtime</a>
+        <a href="#sec-agentic-process">Local process</a>
+        <a href="#sec-agentic-env">Agentic .env</a>
+        <a href="#sec-agentic-safety">Safety</a>
+        <a href="#sec-agentic-strategies">Strategies</a>
+        <a href="#sec-agentic-positions">Positions</a>
+        <a href="#sec-agentic-trades">Trades</a>
+        <a href="#sec-agentic-diagnostics">Diagnostics</a>
       </nav>
 
       <div id="desk-panel-manual" class="desk-tab-panel" role="tabpanel" aria-labelledby="tab-desk-manual">
@@ -1078,6 +1099,207 @@
             </section>
           </div>
         </details>
+      </div>
+
+      <div
+        id="desk-panel-agentic"
+        class="desk-tab-panel"
+        role="tabpanel"
+        aria-labelledby="tab-desk-agentic"
+        hidden
+      >
+        <section class="card wide" id="sec-agentic-runtime">
+          <div class="card-head">
+            <h2>Agentic Trading runtime</h2>
+            <div class="btn-row">
+              <button type="button" class="btn small" id="btn-agentic-refresh-health">Refresh</button>
+            </div>
+          </div>
+          <p class="muted">
+            Dashboard proxies the twilight-bot HTTP API through <code>/api/twilight-bot/*</code>. Configure
+            <code>TWILIGHT_BOT_BASE_URL</code> (default <code>http://127.0.0.1:8787</code>) and optionally
+            <code>TWILIGHT_BOT_API_TOKEN</code> in <code>.env</code>.
+          </p>
+          <p class="hint" id="agentic-health-line">Loading…</p>
+          <pre class="out out-compact" id="agentic-health-out">Loading…</pre>
+        </section>
+
+        <section class="card wide" id="sec-agentic-process">
+          <div class="card-head">
+            <h2>Local twilight-bot process</h2>
+            <div class="btn-row">
+              <button type="button" class="btn small" id="btn-agentic-process-status">Refresh status</button>
+              <button type="button" class="btn primary" id="btn-agentic-process-start">Start</button>
+              <button type="button" class="btn danger" id="btn-agentic-process-stop">Stop</button>
+            </div>
+          </div>
+          <p class="muted small">
+            Spawns a child from this dashboard (same machine). Requires
+            <code>TWILIGHT_BOT_ALLOW_DASHBOARD_SPAWN=YES</code> and <code>TWILIGHT_BOT_REPO_DIR</code> in Agentic .env.
+            Default command is <code>npm start</code> in that directory (override with <code>TWILIGHT_BOT_SPAWN</code>).
+            Stop sends <code>SIGTERM</code>. HTTP proxy still uses <code>TWILIGHT_BOT_BASE_URL</code>.
+          </p>
+          <p class="hint" id="agentic-process-line">—</p>
+          <pre class="out out-compact" id="agentic-process-out">—</pre>
+        </section>
+
+        <section class="card wide" id="sec-agentic-env">
+          <h2>Agentic .env</h2>
+          <p class="muted">
+            Agentic-only env controls. Saves directly to the repo <code>.env</code> used by this dashboard and runtime.
+          </p>
+          <div class="field-grid">
+            <label class="field wide">
+              <span>twilight-bot base URL <code>TWILIGHT_BOT_BASE_URL</code></span>
+              <input
+                type="text"
+                id="agentic-env-base-url"
+                autocomplete="off"
+                placeholder="http://127.0.0.1:8787"
+              />
+            </label>
+            <label class="field wide">
+              <span>twilight-bot bearer token <code>TWILIGHT_BOT_API_TOKEN</code></span>
+              <input
+                type="password"
+                id="agentic-env-api-token"
+                autocomplete="off"
+                placeholder="leave blank to keep existing token"
+              />
+            </label>
+            <label class="field">
+              <span>timeout ms <code>TWILIGHT_BOT_TIMEOUT_MS</code></span>
+              <input type="text" id="agentic-env-timeout-ms" inputmode="numeric" placeholder="15000" />
+            </label>
+            <label class="field wide">
+              <span>clone path <code>TWILIGHT_BOT_REPO_DIR</code></span>
+              <input
+                type="text"
+                id="agentic-env-repo-dir"
+                autocomplete="off"
+                placeholder="/absolute/path/to/twilight-bot"
+              />
+            </label>
+            <label class="field wide">
+              <span>spawn shell command <code>TWILIGHT_BOT_SPAWN</code></span>
+              <input type="text" id="agentic-env-spawn" autocomplete="off" placeholder="npm start" />
+            </label>
+            <label class="inline-check wide">
+              <input type="checkbox" id="agentic-env-allow-spawn" />
+              <span>Allow dashboard to spawn twilight-bot (<code>TWILIGHT_BOT_ALLOW_DASHBOARD_SPAWN=YES</code>)</span>
+            </label>
+            <label class="field wide">
+              <span>git clone URL <code>TWILIGHT_BOT_GIT_URL</code></span>
+              <input
+                type="text"
+                id="agentic-env-git-url"
+                autocomplete="off"
+                placeholder="https://github.com/runnerelectrode/twilight-bot.git"
+              />
+            </label>
+            <label class="inline-check wide">
+              <input type="checkbox" id="agentic-env-allow-clone" />
+              <span>Allow dashboard to clone repo (<code>TWILIGHT_BOT_ALLOW_DASHBOARD_CLONE=YES</code>)</span>
+            </label>
+          </div>
+          <div class="btn-row">
+            <button type="button" class="btn" id="btn-agentic-repo-clone">Clone twilight-bot</button>
+            <button type="button" class="btn primary" id="btn-agentic-env-save">Save Agentic .env</button>
+            <button type="button" class="btn ghost" id="btn-agentic-env-reload">Reload Agentic .env</button>
+          </div>
+          <p class="hint small">
+            <strong>Clone</strong> runs <code>git clone --depth 1</code> into <code>TWILIGHT_BOT_REPO_DIR</code> if set,
+            otherwise <code>&lt;repo&gt;/external/twilight-bot</code>, then writes <code>TWILIGHT_BOT_REPO_DIR</code> to
+            <code>.env</code>. URL must be <code>https://github.com/org/repo(.git)</code>. For a tracked copy, prefer a
+            <a href="https://git-scm.com/book/en/v2/Git-Tools-Submodules" rel="noopener">submodule</a> (see dashboard README).
+          </p>
+          <p class="hint" id="agentic-env-msg"></p>
+        </section>
+
+        <section class="card wide" id="sec-agentic-safety">
+          <h2>Safety controls</h2>
+          <div class="btn-row">
+            <button type="button" class="btn small" id="btn-agentic-refresh-safety">Refresh safety</button>
+            <button type="button" class="btn danger" id="btn-agentic-kill-on">Kill switch ON</button>
+            <button type="button" class="btn" id="btn-agentic-kill-off">Kill switch OFF</button>
+          </div>
+          <p class="hint" id="agentic-safety-line"></p>
+          <div class="field-grid">
+            <label class="field">
+              <span>Max notional USD</span>
+              <input type="text" id="agentic-cap-notional" inputmode="decimal" placeholder="optional" />
+            </label>
+            <label class="field">
+              <span>Max leverage</span>
+              <input type="text" id="agentic-cap-leverage" inputmode="decimal" placeholder="optional" />
+            </label>
+            <label class="field">
+              <span>Daily loss stop USD</span>
+              <input type="text" id="agentic-cap-daily-loss" inputmode="decimal" placeholder="optional" />
+            </label>
+            <label class="inline-check wide">
+              <input type="checkbox" id="agentic-cap-confirm-live" />
+              <span>confirm_live for cap increases in live mode</span>
+            </label>
+          </div>
+          <div class="btn-row">
+            <button type="button" class="btn primary" id="btn-agentic-save-caps">Save caps</button>
+          </div>
+          <pre class="out out-compact" id="agentic-safety-out"></pre>
+        </section>
+
+        <section class="card wide" id="sec-agentic-strategies">
+          <div class="card-head">
+            <h2>Strategies</h2>
+            <div class="btn-row">
+              <button type="button" class="btn small" id="btn-agentic-refresh-strategies">Refresh</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Name</th>
+                  <th>Category</th>
+                  <th>Risk</th>
+                  <th>APY</th>
+                </tr>
+              </thead>
+              <tbody id="agentic-strategies-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card wide" id="sec-agentic-positions">
+          <div class="card-head">
+            <h2>Positions</h2>
+            <div class="btn-row">
+              <button type="button" class="btn small" id="btn-agentic-refresh-positions">Refresh</button>
+            </div>
+          </div>
+          <pre class="out out-compact" id="agentic-positions-out">Loading…</pre>
+        </section>
+
+        <section class="card wide" id="sec-agentic-trades">
+          <div class="card-head">
+            <h2>Trades</h2>
+            <div class="btn-row">
+              <button type="button" class="btn small" id="btn-agentic-refresh-trades">Refresh</button>
+            </div>
+          </div>
+          <pre class="out out-compact" id="agentic-trades-out">Loading…</pre>
+        </section>
+
+        <section class="card wide" id="sec-agentic-diagnostics">
+          <div class="card-head">
+            <h2>Diagnostics (ticks)</h2>
+            <div class="btn-row">
+              <button type="button" class="btn small" id="btn-agentic-refresh-ticks">Refresh</button>
+            </div>
+          </div>
+          <pre class="out out-compact" id="agentic-ticks-out">Loading…</pre>
+        </section>
       </div>
     </main>
 
