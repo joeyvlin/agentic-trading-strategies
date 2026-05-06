@@ -126,9 +126,9 @@
       </nav>
 
       <nav class="flow-nav flow-nav-agentic desk-span-all" aria-label="Agentic sections" hidden>
-        <a href="#sec-agentic-env">Required setup</a>
         <a href="#sec-agentic-process">Run</a>
         <a href="#sec-agentic-runtime">Runtime status</a>
+        <a href="#sec-agentic-pnl">Agent P&amp;L</a>
       </nav>
 
       <div id="desk-panel-manual" class="desk-tab-panel" role="tabpanel" aria-labelledby="tab-desk-manual">
@@ -1086,21 +1086,6 @@
         aria-labelledby="tab-desk-agentic"
         hidden
       >
-        <section class="card wide" id="sec-agentic-env">
-          <h2>Required setup</h2>
-          <p class="muted">
-            No required inputs. Click <strong>Spin up twilight-bot</strong> below.
-          </p>
-          <p class="muted small">
-            On first spin-up, the dashboard will auto-write:
-            <code>TWILIGHT_BOT_ALLOW_DASHBOARD_SPAWN=YES</code>,
-            <code>TWILIGHT_BOT_BASE_URL=http://127.0.0.1:8787</code>,
-            and (if missing) <code>STRATEGY_API_KEY</code> using the documented example key.
-            Replace the example key later in <strong>Manual → Environment</strong>.
-          </p>
-          <p class="hint" id="agentic-env-msg"></p>
-        </section>
-
         <section class="card wide" id="sec-agentic-process">
           <div class="card-head">
             <h2>One-click run</h2>
@@ -1131,6 +1116,43 @@
           </p>
           <p class="hint" id="agentic-health-line">Loading…</p>
           <pre class="out out-compact" id="agentic-health-out">Loading…</pre>
+        </section>
+
+        <section class="card wide" id="sec-agentic-pnl">
+          <div class="card-head">
+            <h2>Agent P&amp;L (positions)</h2>
+            <button type="button" class="btn small" id="btn-pnl-refresh-agentic">Refresh</button>
+          </div>
+          <p class="muted" id="pnl-note-line-agentic" hidden></p>
+          <dl class="stats stats-cols" id="pnl-stats-agentic"></dl>
+          <h3 class="subhead">Open</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Strategy</th>
+                  <th>Mode</th>
+                  <th>Entry BTC</th>
+                  <th>Unreal $</th>
+                  <th>Close (venues + ledger)</th>
+                </tr>
+              </thead>
+              <tbody id="positions-open-body-agentic"></tbody>
+            </table>
+          </div>
+          <h3 class="subhead">Closed</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Closed</th>
+                  <th>Strategy</th>
+                  <th>Realized $</th>
+                </tr>
+              </thead>
+              <tbody id="positions-closed-body-agentic"></tbody>
+            </table>
+          </div>
         </section>
 
       </div>

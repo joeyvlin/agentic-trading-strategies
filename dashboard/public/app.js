@@ -558,7 +558,7 @@ function initDeskTabs() {
   if (
     location.hash === '#sec-agentic-runtime' ||
     location.hash === '#sec-agentic-process' ||
-    location.hash === '#sec-agentic-env'
+    location.hash === '#sec-agentic-pnl'
   ) {
     initial = 'agentic';
   }
@@ -584,7 +584,7 @@ function initDeskTabs() {
     if (
       location.hash === '#sec-agentic-runtime' ||
       location.hash === '#sec-agentic-process' ||
-      location.hash === '#sec-agentic-env'
+      location.hash === '#sec-agentic-pnl'
     ) {
       setDeskTab('agentic');
     }
@@ -1903,7 +1903,31 @@ const PNL_DOM_SLOTS = [
     open: 'positions-open-body-auto',
     closed: 'positions-closed-body-auto',
   },
+  {
+    stats: 'pnl-stats-agentic',
+    note: 'pnl-note-line-agentic',
+    open: 'positions-open-body-agentic',
+    closed: 'positions-closed-body-agentic',
+  },
 ];
+
+function renderPnlNote(noteEl, pnlNote) {
+  if (!noteEl) return;
+  const raw = String(pnlNote || '').trim();
+  if (!raw) {
+    noteEl.textContent = '';
+    return;
+  }
+  if (/^Close sends real venue exits/i.test(raw)) {
+    noteEl.innerHTML =
+      'Close behavior' +
+      ' <span class="help-tip" title="' +
+      escapeHtml(raw) +
+      '">?</span>';
+    return;
+  }
+  noteEl.textContent = raw;
+}
 
 function renderPnlIntoSlot(slot, p) {
   const el = document.getElementById(slot.stats);
@@ -1924,7 +1948,7 @@ function renderPnlIntoSlot(slot, p) {
       stat('Open notional (portfolio)', fmtUsd(p.openNotionalUsd)),
     ].join('');
   }
-  if (note) note.textContent = p.pnlNote || '';
+  renderPnlNote(note, p.pnlNote);
 
   const opens = p.openPositions || [];
   if (openBody) {
@@ -2549,30 +2573,6 @@ async function refreshAgenticTrading(opts = {}) {
   }
 }
 
-function getEnvValue(entries, key) {
-  const row = (entries || []).find((e) => e?.key === key);
-  return row?.value ?? '';
-}
-
-async function refreshAgenticEnv() {
-  const msg = document.getElementById('agentic-env-msg');
-  if (!msg) return;
-  try {
-    if (msg) {
-      msg.textContent = '';
-      msg.classList.remove('hint-error');
-    }
-  } catch (e) {
-    const m = errMsg(e);
-    if (msg) {
-      msg.textContent = m;
-      msg.classList.add('hint-error');
-    }
-  }
-}
-
-// No Agentic env save action (spin-up writes required defaults).
-
 async function spinUpAgentic() {
   try {
     const r = await readJson('/api/twilight-bot/spin-up', { method: 'POST' });
@@ -2581,7 +2581,6 @@ async function spinUpAgentic() {
         ? `\n${r.steps.map((s) => `${s.step}: ${s.ok ? 'ok' : 'fail'}`).join('\n')}`
         : '';
     showDashboardSuccess(`Spin up complete (pid ${r.pid ?? '—'}).${stepSummary}`, 'Twilight-bot');
-    await refreshAgenticEnv();
     await refreshAgenticProcessStatus({ userAction: true });
     await refreshAgenticTrading({ userAction: false });
   } catch (e) {
@@ -3075,9 +3074,13 @@ function bindPositionsOpenBodyClick(tbody) {
 
 bindPositionsOpenBodyClick(document.getElementById('positions-open-body'));
 bindPositionsOpenBodyClick(document.getElementById('positions-open-body-auto'));
+bindPositionsOpenBodyClick(document.getElementById('positions-open-body-agentic'));
 
 document.getElementById('btn-pnl-refresh')?.addEventListener('click', () => refreshPnl({ userAction: true }));
 document.getElementById('btn-pnl-refresh-auto')?.addEventListener('click', () => refreshPnl({ userAction: true }));
+document
+  .getElementById('btn-pnl-refresh-agentic')
+  ?.addEventListener('click', () => refreshPnl({ userAction: true }));
 
 function envStatusBadge(row) {
   if (!row.hasValue) {
@@ -4263,7 +4266,6 @@ loadRelayerMeta();
 refreshEnv();
 loadAgentSettings();
 refreshStatus();
-refreshAgenticEnv();
 refreshAgenticTrading();
 refreshPnl();
 refreshTx();
