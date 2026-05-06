@@ -86,6 +86,21 @@ export function registerDashboardDataRoutes(app, { requireToken }) {
       res.status(500).json({ error: e.message || String(e) });
     }
   });
+  app.get('/api/venue-api-keys/export-env', requireToken, (_req, res) => {
+    try {
+      const raw = loadExchangeKeys() || {};
+      const bin = raw.binance || {};
+      const by = raw.bybit || {};
+      res.json({
+        BINANCE_API_KEY: String(bin.apiKey || ''),
+        BINANCE_API_SECRET: String(bin.apiSecret || ''),
+        BYBIT_API_KEY: String(by.apiKey || ''),
+        BYBIT_API_SECRET: String(by.apiSecret || ''),
+      });
+    } catch (e) {
+      res.status(500).json({ error: e.message || String(e) });
+    }
+  });
   app.get('/api/exchange-keys', requireToken, getExchangeKeys);
   app.put('/api/exchange-keys', requireToken, putExchangeKeys);
 

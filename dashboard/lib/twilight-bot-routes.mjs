@@ -2,6 +2,7 @@ import { URL } from 'url';
 import {
   getTwilightBotProcessStatus,
   registerTwilightBotProcessShutdown,
+  sendTwilightBotCommand,
   startTwilightBot,
   stopTwilightBot,
 } from './twilight-bot-process.mjs';
@@ -73,11 +74,19 @@ function boolFromQuery(v) {
 export function registerTwilightBotRoutes(app, { requireToken }) {
   registerTwilightBotProcessShutdown();
 
-  app.get('/api/twilight-bot/process/status', requireToken, (_req, res) => {
-    res.json(getTwilightBotProcessStatus());
+  app.get('/api/twilight-bot/process/status', requireToken, async (_req, res) => {
+    res.json(await getTwilightBotProcessStatus());
   });
 
-  app.post('/api/twilight-bot/process/start', requireToken, (req, res) => {
+  app.post('/api/twilight-bot/process/start', requireToken, async (req, res) => {
+    const current = await getTwilightBotProcessStatus();
+    if (current?.running) {
+      return res.status(400).json({
+        ok: false,
+        error: `twilight-bot process already running (pid ${current.pid ?? 'unknown'})`,
+        status: current,
+      });
+    }
     const repoDir = String(req.body?.repoDir || req.body?.repo_dir || '').trim();
     const command = String(req.body?.command || '').trim();
     const out = startTwilightBot({
@@ -85,13 +94,21 @@ export function registerTwilightBotRoutes(app, { requireToken }) {
       ...(command ? { command } : {}),
     });
     if (!out.ok) return res.status(400).json(out);
-    res.json({ ...out, status: getTwilightBotProcessStatus() });
+    res.json({ ...out, status: await getTwilightBotProcessStatus() });
   });
 
-  app.post('/api/twilight-bot/process/stop', requireToken, (req, res) => {
-    const out = stopTwilightBot();
+  app.post('/api/twilight-bot/process/stop', requireToken, async (req, res) => {
+    const out = await stopTwilightBot();
     if (!out.ok) return res.status(400).json(out);
-    res.json({ ...out, status: getTwilightBotProcessStatus() });
+    res.json({ ...out, status: await getTwilightBotProcessStatus() });
+  });
+
+  app.post('/api/twilight-bot/process/command', requireToken, async (req, res) => {
+    const command = String(req.body?.command || '').trim();
+    const appendNewline = req.body?.appendNewline !== false;
+    const out = sendTwilightBotCommand(command, { appendNewline });
+    if (!out.ok) return res.status(400).json(out);
+    res.json({ ...out, status: await getTwilightBotProcessStatus() });
   });
 
   app.post('/api/twilight-bot/repo/clone', requireToken, (req, res) => {
@@ -105,10 +122,10 @@ export function registerTwilightBotRoutes(app, { requireToken }) {
     res.json(out);
   });
 
-  app.post('/api/twilight-bot/spin-up', requireToken, (_req, res) => {
+  app.post('/api/twilight-bot/spin-up', requireToken, async (_req, res) => {
     const out = spinUpTwilightBot();
     if (!out.ok) return res.status(400).json(out);
-    res.json({ ...out, status: getTwilightBotProcessStatus() });
+    res.json({ ...out, status: await getTwilightBotProcessStatus() });
   });
 
   app.get('/api/twilight-bot/healthz', requireToken, async (req, res) => {

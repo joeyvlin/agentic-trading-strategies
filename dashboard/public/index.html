@@ -133,7 +133,6 @@
       <nav class="flow-nav flow-nav-agentic desk-span-all" aria-label="Agentic sections" hidden>
         <a href="#sec-agentic-bot-console">twilight-bot console</a>
         <a href="#sec-agentic-process">Run</a>
-        <a href="#sec-agentic-runtime">Runtime status</a>
         <a href="#sec-agentic-pnl">Agent P&amp;L</a>
       </nav>
 
@@ -1299,7 +1298,7 @@
 
         <section class="card wide" id="sec-agentic-process">
           <div class="card-head">
-            <h2><span class="step-num">2</span> One-click run</h2>
+            <h2><span class="step-num">2</span> One-click run + runtime status</h2>
             <div class="btn-row">
               <button type="button" class="btn primary" id="btn-agentic-spin-up">Spin up</button>
               <button type="button" class="btn small" id="btn-agentic-process-status">Status</button>
@@ -1312,21 +1311,25 @@
             <code>npm start</code>.
           </p>
           <p class="hint" id="agentic-process-line">—</p>
-          <pre class="out out-compact" id="agentic-process-out">—</pre>
-        </section>
-
-        <section class="card wide" id="sec-agentic-runtime">
-          <div class="card-head">
-            <h2><span class="step-num">3</span> Runtime status</h2>
-            <div class="btn-row">
-              <button type="button" class="btn small" id="btn-agentic-refresh-health">Refresh</button>
-            </div>
+          <p class="hint small" id="agentic-runtime-line">Loading…</p>
+          <div class="field-grid">
+            <label class="field wide">
+              <span>Send command to running bot stdin</span>
+              <input
+                type="text"
+                id="agentic-process-command"
+                autocomplete="off"
+                placeholder="e.g. status, help, or a runtime command"
+              />
+            </label>
           </div>
-          <p class="muted">
-            Shows health from the running local twilight-bot process.
-          </p>
-          <p class="hint" id="agentic-health-line">Loading…</p>
-          <pre class="out out-compact" id="agentic-health-out">Loading…</pre>
+          <div class="btn-row">
+            <button type="button" class="btn small" id="btn-agentic-process-command-send">Send command</button>
+          </div>
+          <pre class="out out-compact" id="agentic-process-command-out">—</pre>
+          <h3 class="subhead">Recent bot output</h3>
+          <p class="hint small">Live stdout/stderr/stdin from the process spawned by this dashboard.</p>
+          <pre class="out out-compact" id="agentic-process-logs-out">Loading…</pre>
         </section>
 
         <section class="card wide" id="sec-agentic-pnl">

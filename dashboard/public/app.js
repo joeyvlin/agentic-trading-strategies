@@ -78,6 +78,70 @@ function shouldSurfaceFetchError(e, opts = {}) {
   return !isLikelyNetworkFailure(e);
 }
 
+async function copyTextToClipboard(text) {
+  const s = String(text ?? '');
+  if (navigator?.clipboard?.writeText) {
+    await navigator.clipboard.writeText(s);
+    return;
+  }
+  const ta = document.createElement('textarea');
+  ta.value = s;
+  ta.setAttribute('readonly', 'true');
+  ta.style.position = 'fixed';
+  ta.style.top = '-1000px';
+  ta.style.left = '-1000px';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+}
+
+function initCopyButtons() {
+  const pres = document.querySelectorAll(
+    'pre.out[id], pre.log[id], pre.env-raw-pre[id], pre.relayer-out[id], pre.modal-dashboard-result-body[id]'
+  );
+  for (const pre of pres) {
+    if (!pre?.id) continue;
+    if (pre.dataset.copyBtnAttached === '1') continue;
+    pre.dataset.copyBtnAttached = '1';
+
+    const row = document.createElement('div');
+    row.className = 'copy-row';
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn small ghost copy-btn';
+    btn.textContent = 'Copy';
+    btn.dataset.copyTargetId = pre.id;
+    btn.addEventListener('click', async () => {
+      try {
+        const target = document.getElementById(btn.dataset.copyTargetId);
+        await copyTextToClipboard(target?.textContent ?? '');
+        const prev = btn.textContent;
+        btn.textContent = 'Copied';
+        setTimeout(() => {
+          btn.textContent = prev;
+        }, 900);
+      } catch (e) {
+        showDashboardError(errMsg(e), 'Copy');
+      }
+    });
+
+    row.appendChild(btn);
+    pre.insertAdjacentElement('beforebegin', row);
+  }
+}
+
+function initHelpTips() {
+  for (const el of document.querySelectorAll('.help-tip[title]')) {
+    const title = el.getAttribute('title') || '';
+    if (!title) continue;
+    el.setAttribute('data-tip', title);
+    el.setAttribute('aria-label', title);
+    el.setAttribute('tabindex', '0');
+  }
+}
+
 /** Maps `context` passed to showDashboardError / showDashboardWarning to a section id for in-place alerts. */
 const SECTION_BY_CONTEXT = {
   'Strategy run': 'sec-strategies',
@@ -558,7 +622,12 @@ function initDeskTabs() {
   if (
     location.hash === '#sec-agentic-runtime' ||
     location.hash === '#sec-agentic-process' ||
-    location.hash === '#sec-agentic-pnl'
+    location.hash === '#sec-agentic-pnl' ||
+    location.hash === '#sec-agentic-bot-console' ||
+    location.hash === '#sec-agentic-bot-trades' ||
+    location.hash === '#sec-agentic-bot-positions' ||
+    location.hash === '#sec-agentic-bot-ticks' ||
+    location.hash === '#sec-agentic-bot-live'
   ) {
     initial = 'agentic';
   }
@@ -584,7 +653,12 @@ function initDeskTabs() {
     if (
       location.hash === '#sec-agentic-runtime' ||
       location.hash === '#sec-agentic-process' ||
-      location.hash === '#sec-agentic-pnl'
+      location.hash === '#sec-agentic-pnl' ||
+      location.hash === '#sec-agentic-bot-console' ||
+      location.hash === '#sec-agentic-bot-trades' ||
+      location.hash === '#sec-agentic-bot-positions' ||
+      location.hash === '#sec-agentic-bot-ticks' ||
+      location.hash === '#sec-agentic-bot-live'
     ) {
       setDeskTab('agentic');
     }
@@ -2533,42 +2607,41 @@ function asPrettyJson(v) {
 
 async function refreshAgenticProcessStatus(opts = {}) {
   const line = document.getElementById('agentic-process-line');
-  const out = document.getElementById('agentic-process-out');
-  if (!out) return;
+  const logsOut = document.getElementById('agentic-process-logs-out');
+  if (!line && !logsOut) return;
   try {
     const st = await readJson('/api/twilight-bot/process/status');
     const run = st?.running ? 'running' : 'stopped';
     const pid = st?.pid ?? st?.lastPid ?? '—';
+    const mode = st?.attached ? 'attached' : st?.external ? 'external' : 'none';
     if (line) {
-      line.textContent = `Process: ${run} · pid ${pid} · spawn allowed: ${st?.spawnAllowed ? 'yes' : 'no'} · repo: ${st?.repoDir || '—'}`;
+      line.textContent = `Process: ${run} · mode: ${mode} · pid ${pid} · spawn allowed: ${st?.spawnAllowed ? 'yes' : 'no'} · repo: ${st?.repoDir || '—'}`;
     }
-    out.textContent = asPrettyJson(st);
+    if (logsOut) {
+      const lines = Array.isArray(st?.recentLogs) ? st.recentLogs : [];
+      logsOut.textContent = lines.length ? lines.join('\n') : 'No output yet.';
+    }
   } catch (e) {
     if (!shouldSurfaceFetchError(e, opts)) return;
     const m = errMsg(e);
     if (line) line.textContent = m;
-    out.textContent = m;
+    if (logsOut) logsOut.textContent = m;
     if (opts.userAction) showDashboardError(m, 'Twilight-bot process');
   }
 }
 
 async function refreshAgenticTrading(opts = {}) {
-  const healthLine = document.getElementById('agentic-health-line');
-  const healthOut = document.getElementById('agentic-health-out');
-  if (!healthOut) return;
+  const runtimeLine = document.getElementById('agentic-runtime-line');
+  if (!runtimeLine) return;
   await refreshAgenticProcessStatus(opts);
   try {
     const health = await readJson('/api/twilight-bot/healthz');
-    if (healthLine) {
-      const up = health?.uptime_s ?? health?.uptime ?? health?.uptime_sec;
-      healthLine.textContent = `Connected · uptime: ${up != null ? up : 'n/a'} · status: ${health?.status || 'ok'}`;
-    }
-    healthOut.textContent = asPrettyJson(health);
+    const up = health?.uptime_s ?? health?.uptime ?? health?.uptime_sec;
+    runtimeLine.textContent = `Health: connected · uptime: ${up != null ? up : 'n/a'} · status: ${health?.status || 'ok'}`;
   } catch (e) {
     if (!shouldSurfaceFetchError(e, opts)) return;
     const m = errMsg(e);
-    if (healthLine) healthLine.textContent = m;
-    if (healthOut) healthOut.textContent = m;
+    runtimeLine.textContent = `Health: ${m}`;
     if (opts.userAction) showDashboardError(m, 'Agentic trading');
   }
 }
@@ -2588,12 +2661,398 @@ async function spinUpAgentic() {
   }
 }
 
+function readNumOrDefault(id, def) {
+  const raw = document.getElementById(id)?.value;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : def;
+}
+
+const TWILIGHT_BOT_PARAM_DEFAULTS = {
+  PAPER: '1',
+  LIVE_TRADING_CONFIRMED: 'NO',
+  MAX_OPEN_POSITIONS: '1',
+  MAX_NOTIONAL_USD_PER_INTENT: '200',
+  MAX_LEVERAGE: '5',
+  DAILY_LOSS_STOP_USD: '50',
+  MIN_BALANCE_USD_PER_VENUE: '50',
+};
+
+const TWILIGHT_BOT_PARAM_KEYS = [
+  'PAPER',
+  'LIVE_TRADING_CONFIRMED',
+  'MAX_OPEN_POSITIONS',
+  'MAX_NOTIONAL_USD_PER_INTENT',
+  'MAX_LEVERAGE',
+  'DAILY_LOSS_STOP_USD',
+  'MIN_BALANCE_USD_PER_VENUE',
+  'NYKS_WALLET_ID',
+  'NYKS_WALLET_PASSPHRASE',
+  'BINANCE_API_KEY',
+  'BINANCE_API_SECRET',
+  'BYBIT_API_KEY',
+  'BYBIT_API_SECRET',
+];
+
+const TWILIGHT_BOT_SECRET_KEYS = new Set([
+  'NYKS_WALLET_PASSPHRASE',
+  'BINANCE_API_KEY',
+  'BINANCE_API_SECRET',
+  'BYBIT_API_KEY',
+  'BYBIT_API_SECRET',
+]);
+
+let twilightBotParamRows = [];
+let exchangeKeysStatusCache = null;
+
+function tbParamInput(key) {
+  return document.getElementById(`tb-param-${key}`);
+}
+
+function tbParamStatusEl(key) {
+  return document.getElementById(`tb-param-status-${key}`);
+}
+
+function getTwilightBotAutoFillValues() {
+  const map = {};
+  const selectedWallet = document.getElementById('wallet-select')?.value?.trim() ?? '';
+  const walletPass = document.getElementById('wallet-pass')?.value ?? '';
+  const binanceKey = document.getElementById('binance-api-key')?.value ?? '';
+  const binanceSecret = document.getElementById('binance-api-secret')?.value ?? '';
+  const bybitKey = document.getElementById('bybit-api-key')?.value ?? '';
+  const bybitSecret = document.getElementById('bybit-api-secret')?.value ?? '';
+  if (selectedWallet) map.NYKS_WALLET_ID = selectedWallet;
+  if (walletPass) map.NYKS_WALLET_PASSPHRASE = walletPass;
+  if (binanceKey) map.BINANCE_API_KEY = binanceKey;
+  if (binanceSecret) map.BINANCE_API_SECRET = binanceSecret;
+  if (bybitKey) map.BYBIT_API_KEY = bybitKey;
+  if (bybitSecret) map.BYBIT_API_SECRET = bybitSecret;
+  return map;
+}
+
+function refreshTwilightBotSecretIndicators() {
+  const keys = ['BINANCE_API_KEY', 'BINANCE_API_SECRET', 'BYBIT_API_KEY', 'BYBIT_API_SECRET'];
+  const byKey = Object.fromEntries((twilightBotParamRows || []).map((e) => [e.key, e]));
+  const savedBin = !!exchangeKeysStatusCache?.binance?.configured;
+  const savedBy = !!exchangeKeysStatusCache?.bybit?.configured;
+  for (const key of keys) {
+    const el = tbParamStatusEl(key);
+    if (!el) continue;
+    const fromEnv = String(byKey[key]?.value || '').trim() !== '';
+    const fromStore = key.startsWith('BINANCE_') ? savedBin : savedBy;
+    const suffix = key.startsWith('BINANCE_')
+      ? exchangeKeysStatusCache?.binance?.apiKeySuffix || ''
+      : exchangeKeysStatusCache?.bybit?.apiKeySuffix || '';
+    if (fromEnv) {
+      el.textContent = 'set in .env';
+    } else if (fromStore) {
+      el.textContent = suffix ? `saved in CEX key store (${suffix})` : 'saved in CEX key store';
+    } else {
+      el.textContent = 'not set';
+    }
+  }
+}
+
+function fillTwilightBotParamInputs(entries = [], { preferDashboard = false } = {}) {
+  const byKey = Object.fromEntries((entries || []).map((e) => [e.key, e]));
+  const auto = getTwilightBotAutoFillValues();
+  for (const key of TWILIGHT_BOT_PARAM_KEYS) {
+    const el = tbParamInput(key);
+    if (!el) continue;
+    const envVal = byKey[key]?.value ?? '';
+    const autoVal = auto[key] ?? '';
+    const defVal = TWILIGHT_BOT_PARAM_DEFAULTS[key] ?? '';
+    const next = preferDashboard ? autoVal || envVal || defVal : envVal || autoVal || defVal;
+    if (typeof next === 'string') el.value = next;
+  }
+}
+
+async function refreshTwilightBotParams() {
+  const msg = document.getElementById('tb-params-msg');
+  try {
+    const data = await readJson('/api/env');
+    twilightBotParamRows = data.entries || [];
+    fillTwilightBotParamInputs(twilightBotParamRows, { preferDashboard: false });
+    refreshTwilightBotSecretIndicators();
+    if (msg) {
+      msg.textContent = 'Saved to repo .env (used by twilight-bot process).';
+      msg.classList.remove('hint-error');
+    }
+  } catch (e) {
+    const m = errMsg(e);
+    if (msg) {
+      msg.textContent = m;
+      msg.classList.add('hint-error');
+    }
+  }
+}
+
+async function autofillTwilightBotParamsFromDashboard() {
+  const msg = document.getElementById('tb-params-msg');
+  try {
+    const exported = await readJson('/api/venue-api-keys/export-env');
+    const byKey = Object.fromEntries((twilightBotParamRows || []).map((e) => [e.key, e]));
+    fillTwilightBotParamInputs(twilightBotParamRows, { preferDashboard: true });
+    for (const key of ['BINANCE_API_KEY', 'BINANCE_API_SECRET', 'BYBIT_API_KEY', 'BYBIT_API_SECRET']) {
+      const el = tbParamInput(key);
+      if (!el) continue;
+      const raw = String(exported?.[key] || '').trim();
+      if (raw) {
+        el.value = raw;
+      } else if (byKey[key]?.hasValue) {
+        // Keep blank to preserve already-saved secret on Save.
+        el.value = '';
+      }
+    }
+    refreshTwilightBotSecretIndicators();
+    if (msg) {
+      msg.textContent = 'Autofilled from wallet/session/CEX key store and current .env.';
+      msg.classList.remove('hint-error');
+    }
+  } catch (e) {
+    const m = errMsg(e);
+    if (msg) {
+      msg.textContent = m;
+      msg.classList.add('hint-error');
+    }
+    showDashboardError(m, 'Autofill twilight-bot params');
+  }
+}
+
+function collectTwilightBotParamUpdates() {
+  const updates = {};
+  const byKey = Object.fromEntries((twilightBotParamRows || []).map((r) => [r.key, r]));
+  for (const key of TWILIGHT_BOT_PARAM_KEYS) {
+    const el = tbParamInput(key);
+    if (!el) continue;
+    const raw = String(el.value ?? '').trim();
+    if (!raw && TWILIGHT_BOT_SECRET_KEYS.has(key) && byKey[key]?.hasValue) continue;
+    if (!raw && TWILIGHT_BOT_SECRET_KEYS.has(key)) continue;
+    if (!raw) continue;
+    updates[key] = raw;
+  }
+  return updates;
+}
+
+async function saveTwilightBotParams() {
+  const msg = document.getElementById('tb-params-msg');
+  try {
+    const updates = collectTwilightBotParamUpdates();
+    await readJson('/api/env', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates }),
+    });
+    if (msg) {
+      msg.textContent = 'Saved. Restart/spin up twilight-bot to apply env changes.';
+      msg.classList.remove('hint-error');
+    }
+    await refreshTwilightBotParams();
+    await refreshEnv();
+  } catch (e) {
+    const m = errMsg(e);
+    if (msg) {
+      msg.textContent = m;
+      msg.classList.add('hint-error');
+    }
+    showDashboardError(m, 'Save twilight-bot params');
+  }
+}
+
+async function refreshBotTrades(opts = {}) {
+  const out = document.getElementById('agentic-bot-trades-out');
+  if (!out) return;
+  out.textContent = 'Loading…';
+  try {
+    const q = document.getElementById('agentic-bot-trades-q')?.value?.trim() ?? '';
+    const limit = readNumOrDefault('agentic-bot-trades-limit', 25);
+    const qs = new URLSearchParams();
+    if (q) qs.set('q', q);
+    if (limit) qs.set('limit', String(limit));
+    const data = await readJson(`/api/twilight-bot/trades${qs.size ? `?${qs.toString()}` : ''}`);
+    out.textContent = asPrettyJson(data);
+  } catch (e) {
+    const m = errMsg(e);
+    out.textContent = m;
+    if (opts.userAction) showDashboardError(m, 'twilight-bot trades');
+  }
+}
+
+async function refreshBotPositions(opts = {}) {
+  const out = document.getElementById('agentic-bot-positions-out');
+  if (!out) return;
+  out.textContent = 'Loading…';
+  try {
+    const venue = document.getElementById('agentic-bot-positions-venue')?.value?.trim() ?? '';
+    const qs = new URLSearchParams();
+    if (venue) qs.set('venue', venue);
+    const data = await readJson(`/api/twilight-bot/positions${qs.size ? `?${qs.toString()}` : ''}`);
+    out.textContent = asPrettyJson(data);
+  } catch (e) {
+    const m = errMsg(e);
+    out.textContent = m;
+    if (opts.userAction) showDashboardError(m, 'twilight-bot positions');
+  }
+}
+
+async function refreshBotTicks(opts = {}) {
+  const out = document.getElementById('agentic-bot-ticks-out');
+  if (!out) return;
+  out.textContent = 'Loading…';
+  try {
+    const skill = document.getElementById('agentic-bot-ticks-skill')?.value?.trim() ?? '';
+    const status = document.getElementById('agentic-bot-ticks-status')?.value?.trim() ?? '';
+    const limit = readNumOrDefault('agentic-bot-ticks-limit', 100);
+    const qs = new URLSearchParams();
+    if (skill) qs.set('skill', skill);
+    if (status) qs.set('status', status);
+    if (limit) qs.set('limit', String(limit));
+    const data = await readJson(`/api/twilight-bot/ticks${qs.size ? `?${qs.toString()}` : ''}`);
+    out.textContent = asPrettyJson(data);
+  } catch (e) {
+    const m = errMsg(e);
+    out.textContent = m;
+    if (opts.userAction) showDashboardError(m, 'twilight-bot ticks');
+  }
+}
+
+function parseJsonTextArea(id) {
+  const raw = document.getElementById(id)?.value ?? '';
+  if (!String(raw).trim()) return {};
+  return JSON.parse(String(raw));
+}
+
+async function botPost(path, body) {
+  return await readJson(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
+  });
+}
+
+async function botPut(path, body) {
+  return await readJson(path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
+  });
+}
+
+async function sendBotIntent({ live }, opts = {}) {
+  const out = document.getElementById('agentic-bot-live-out');
+  if (!out) return;
+  out.textContent = 'Sending…';
+  try {
+    const body = parseJsonTextArea('agentic-bot-intent-json');
+    if (live) {
+      body.confirm_live = document.getElementById('agentic-bot-confirm-live')?.checked === true;
+    }
+    const data = await botPost(live ? '/api/twilight-bot/trades/live' : '/api/twilight-bot/trades/paper', body);
+    out.textContent = asPrettyJson(data);
+    await refreshBotTrades({ userAction: false });
+    await refreshBotPositions({ userAction: false });
+  } catch (e) {
+    const m = errMsg(e);
+    out.textContent = m;
+    if (opts.userAction) showDashboardError(m, live ? 'Send live intent' : 'Send paper intent');
+  }
+}
+
+async function botKillSwitchGet(opts = {}) {
+  const out = document.getElementById('agentic-bot-live-out');
+  if (!out) return;
+  out.textContent = 'Loading…';
+  try {
+    const data = await readJson('/api/twilight-bot/kill-switch');
+    out.textContent = asPrettyJson(data);
+  } catch (e) {
+    const m = errMsg(e);
+    out.textContent = m;
+    if (opts.userAction) showDashboardError(m, 'Kill switch');
+  }
+}
+
+async function botKillSwitchSet(on, opts = {}) {
+  const out = document.getElementById('agentic-bot-live-out');
+  if (!out) return;
+  out.textContent = 'Saving…';
+  try {
+    const data = await botPut('/api/twilight-bot/kill-switch', { on: !!on });
+    out.textContent = asPrettyJson(data);
+  } catch (e) {
+    const m = errMsg(e);
+    out.textContent = m;
+    if (opts.userAction) showDashboardError(m, 'Kill switch');
+  }
+}
+
+async function botCapsGet(opts = {}) {
+  const out = document.getElementById('agentic-bot-live-out');
+  if (!out) return;
+  out.textContent = 'Loading…';
+  try {
+    const data = await readJson('/api/twilight-bot/caps');
+    out.textContent = asPrettyJson(data);
+  } catch (e) {
+    const m = errMsg(e);
+    out.textContent = m;
+    if (opts.userAction) showDashboardError(m, 'Caps');
+  }
+}
+
+async function botClosePosition(opts = {}) {
+  const out = document.getElementById('agentic-bot-positions-out');
+  if (!out) return;
+  const rawId = document.getElementById('agentic-bot-close-position-id')?.value?.trim() ?? '';
+  if (!rawId) {
+    showDashboardError('Enter a position id to close.', 'twilight-bot positions');
+    return;
+  }
+  out.textContent = 'Closing…';
+  try {
+    const data = await botPost(`/api/twilight-bot/positions/${encodeURIComponent(rawId)}/close`, {});
+    out.textContent = asPrettyJson(data);
+    await refreshBotPositions({ userAction: false });
+    await refreshBotTrades({ userAction: false });
+  } catch (e) {
+    const m = errMsg(e);
+    out.textContent = m;
+    if (opts.userAction) showDashboardError(m, 'Close twilight-bot position');
+  }
+}
+
 async function stopAgenticProcess() {
   try {
     await readJson('/api/twilight-bot/process/stop', { method: 'POST' });
     await refreshAgenticProcessStatus({ userAction: true });
   } catch (e) {
     showDashboardError(errMsg(e), 'Stop twilight-bot');
+  }
+}
+
+async function sendAgenticProcessCommand(opts = {}) {
+  const input = document.getElementById('agentic-process-command');
+  const out = document.getElementById('agentic-process-command-out');
+  const command = input?.value?.trim() ?? '';
+  if (!command) {
+    if (out) out.textContent = 'Enter a command first.';
+    if (opts.userAction) showDashboardError('Enter a command first.', 'Twilight-bot stdin');
+    return;
+  }
+  if (out) out.textContent = 'Sending…';
+  try {
+    const data = await readJson('/api/twilight-bot/process/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command }),
+    });
+    if (out) out.textContent = asPrettyJson(data);
+    if (input) input.value = '';
+    await refreshAgenticProcessStatus({ userAction: false });
+    await refreshAgenticTrading({ userAction: false });
+  } catch (e) {
+    const m = errMsg(e);
+    if (out) out.textContent = m;
+    if (opts.userAction) showDashboardError(m, 'Send command to twilight-bot');
   }
 }
 
@@ -3428,6 +3887,7 @@ async function loadExchangeStatus(opts = {}) {
   if (!el) return;
   try {
     const m = await readJson('/api/venue-api-keys');
+    exchangeKeysStatusCache = m;
     const bk = document.getElementById('binance-testnet');
     const bt = document.getElementById('bybit-testnet');
     if (bk) bk.checked = !!m.binance?.useTestnet;
@@ -3445,11 +3905,14 @@ async function loadExchangeStatus(opts = {}) {
       lastEl.textContent = `${bLine} · ${yLine}`;
     }
     el.classList.remove('hint-error');
+    refreshTwilightBotSecretIndicators();
   } catch (e) {
     if (!shouldSurfaceFetchError(e, opts)) return;
     const m = errMsg(e);
     el.textContent = m;
     el.classList.add('hint-error');
+    exchangeKeysStatusCache = null;
+    refreshTwilightBotSecretIndicators();
     if (opts.userAction) showDashboardError(m, 'CEX keys status');
   }
 }
@@ -4237,6 +4700,51 @@ document.getElementById('btn-agentic-process-stop')?.addEventListener('click', (
 document.getElementById('btn-agentic-process-status')?.addEventListener('click', () => {
   refreshAgenticProcessStatus({ userAction: true });
 });
+document.getElementById('btn-agentic-process-command-send')?.addEventListener('click', () => {
+  sendAgenticProcessCommand({ userAction: true });
+});
+document.getElementById('agentic-process-command')?.addEventListener('keydown', (ev) => {
+  if (ev.key !== 'Enter') return;
+  ev.preventDefault();
+  sendAgenticProcessCommand({ userAction: true });
+});
+
+document.getElementById('btn-agentic-bot-trades-refresh')?.addEventListener('click', () => {
+  refreshBotTrades({ userAction: true });
+});
+document.getElementById('btn-agentic-bot-positions-refresh')?.addEventListener('click', () => {
+  refreshBotPositions({ userAction: true });
+});
+document.getElementById('btn-agentic-bot-ticks-refresh')?.addEventListener('click', () => {
+  refreshBotTicks({ userAction: true });
+});
+document.getElementById('btn-agentic-bot-close-position')?.addEventListener('click', () => {
+  botClosePosition({ userAction: true });
+});
+document.getElementById('btn-agentic-bot-send-paper')?.addEventListener('click', () => {
+  sendBotIntent({ live: false }, { userAction: true });
+});
+document.getElementById('btn-agentic-bot-send-live')?.addEventListener('click', () => {
+  sendBotIntent({ live: true }, { userAction: true });
+});
+document.getElementById('btn-agentic-bot-kill-switch')?.addEventListener('click', () => {
+  botKillSwitchGet({ userAction: true });
+});
+document.getElementById('btn-agentic-bot-kill-on')?.addEventListener('click', () => {
+  botKillSwitchSet(true, { userAction: true });
+});
+document.getElementById('btn-agentic-bot-kill-off')?.addEventListener('click', () => {
+  botKillSwitchSet(false, { userAction: true });
+});
+document.getElementById('btn-agentic-bot-caps')?.addEventListener('click', () => {
+  botCapsGet({ userAction: true });
+});
+document.getElementById('btn-tb-params-autofill')?.addEventListener('click', () => {
+  autofillTwilightBotParamsFromDashboard();
+});
+document.getElementById('btn-tb-params-save')?.addEventListener('click', () => {
+  saveTwilightBotParams();
+});
 
 const tok = localStorage.getItem('dashboardToken');
 const dashTokEl = document.getElementById('dash-token');
@@ -4253,6 +4761,8 @@ if (savedWalletSession?.password) {
 initDeskTabs();
 initDashboardResultModal();
 initCollapsibleSections();
+initHelpTips();
+initCopyButtons();
 rebuildZkosTransferFromSelect();
 syncZkosInspector();
 
@@ -4271,6 +4781,24 @@ refreshPnl();
 refreshTx();
 refreshLogs();
 loadConfig();
+
+const intentTa = document.getElementById('agentic-bot-intent-json');
+if (intentTa && !intentTa.value.trim()) {
+  intentTa.value = JSON.stringify(
+    {
+      thesis: 'operator-issued via dashboard',
+      legs: [{ venue: 'twilight', side: 'long', notional_usd: 25, leverage: 2, account_index: 0 }],
+      exit: { rules: [] },
+    },
+    null,
+    2
+  );
+}
+
+refreshBotTrades();
+refreshBotPositions();
+refreshBotTicks();
+refreshTwilightBotParams();
 
 setInterval(refreshStatus, 4000);
 setInterval(refreshAgenticTrading, 10000);

@@ -53,6 +53,7 @@ app.get('/api/health', (_req, res) => {
     ok: true,
     service: 'agentic-trading-dashboard',
     apiVersion: 1,
+    serverVersion: `dashboard-${process.pid}-${new Date().toISOString()}`,
   });
 });
 
