@@ -302,6 +302,53 @@ function initDashboardResultModal() {
   });
 }
 
+function openAgenticConfirmModal({
+  title = 'Confirm action',
+  message = 'Are you sure?',
+  confirmText = 'Confirm',
+  confirmClass = 'btn primary danger',
+} = {}) {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('modal-agentic-confirm');
+    const titleEl = document.getElementById('modal-agentic-confirm-title');
+    const msgEl = document.getElementById('modal-agentic-confirm-message');
+    const okBtn = document.getElementById('modal-agentic-confirm-ok');
+    const cancelBtn = document.getElementById('modal-agentic-confirm-cancel');
+    if (!overlay || !okBtn || !cancelBtn) return resolve(window.confirm(message));
+    if (titleEl) titleEl.textContent = title;
+    if (msgEl) msgEl.textContent = message;
+    okBtn.textContent = confirmText;
+    okBtn.className = confirmClass;
+    overlay.hidden = false;
+    overlay.setAttribute('aria-hidden', 'false');
+    let done = false;
+    const finish = (result) => {
+      if (done) return;
+      done = true;
+      overlay.hidden = true;
+      overlay.setAttribute('aria-hidden', 'true');
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      overlay.removeEventListener('click', onOverlay);
+      document.removeEventListener('keydown', onKey);
+      resolve(result);
+    };
+    const onOk = () => finish(true);
+    const onCancel = () => finish(false);
+    const onOverlay = (ev) => {
+      if (ev.target === overlay) finish(false);
+    };
+    const onKey = (ev) => {
+      if (ev.key === 'Escape') finish(false);
+    };
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    overlay.addEventListener('click', onOverlay);
+    document.addEventListener('keydown', onKey);
+    setTimeout(() => okBtn.focus(), 0);
+  });
+}
+
 function formatRequestForError(path, opts = {}) {
   const method = String(opts.method || 'GET').toUpperCase();
   let extra = '';
@@ -4691,21 +4738,49 @@ document.getElementById('btn-agentic-refresh-health')?.addEventListener('click',
   refreshAgenticTrading({ userAction: true });
 });
 // Agentic required setup has no inputs; messages only.
-document.getElementById('btn-agentic-spin-up')?.addEventListener('click', () => {
+document.getElementById('btn-agentic-spin-up')?.addEventListener('click', async () => {
+  const ok = await openAgenticConfirmModal({
+    title: 'Spin up twilight-bot?',
+    message: 'This will run bootstrap steps and start (or attempt to start) the bot process.',
+    confirmText: 'Spin up',
+    confirmClass: 'btn primary',
+  });
+  if (!ok) return;
   spinUpAgentic();
 });
-document.getElementById('btn-agentic-process-stop')?.addEventListener('click', () => {
+document.getElementById('btn-agentic-process-stop')?.addEventListener('click', async () => {
+  const ok = await openAgenticConfirmModal({
+    title: 'Stop twilight-bot?',
+    message: 'This will send SIGTERM to the currently managed bot process. Trading actions will stop.',
+    confirmText: 'Stop bot',
+    confirmClass: 'btn primary danger',
+  });
+  if (!ok) return;
   stopAgenticProcess();
 });
 document.getElementById('btn-agentic-process-status')?.addEventListener('click', () => {
   refreshAgenticProcessStatus({ userAction: true });
 });
-document.getElementById('btn-agentic-process-command-send')?.addEventListener('click', () => {
+document.getElementById('btn-agentic-process-command-send')?.addEventListener('click', async () => {
+  const ok = await openAgenticConfirmModal({
+    title: 'Send runtime command?',
+    message: 'This sends the command to the running twilight-bot stdin.',
+    confirmText: 'Send command',
+    confirmClass: 'btn primary',
+  });
+  if (!ok) return;
   sendAgenticProcessCommand({ userAction: true });
 });
-document.getElementById('agentic-process-command')?.addEventListener('keydown', (ev) => {
+document.getElementById('agentic-process-command')?.addEventListener('keydown', async (ev) => {
   if (ev.key !== 'Enter') return;
   ev.preventDefault();
+  const ok = await openAgenticConfirmModal({
+    title: 'Send runtime command?',
+    message: 'This sends the command to the running twilight-bot stdin.',
+    confirmText: 'Send command',
+    confirmClass: 'btn primary',
+  });
+  if (!ok) return;
   sendAgenticProcessCommand({ userAction: true });
 });
 
@@ -4718,25 +4793,67 @@ document.getElementById('btn-agentic-bot-positions-refresh')?.addEventListener('
 document.getElementById('btn-agentic-bot-ticks-refresh')?.addEventListener('click', () => {
   refreshBotTicks({ userAction: true });
 });
-document.getElementById('btn-agentic-bot-close-position')?.addEventListener('click', () => {
+document.getElementById('btn-agentic-bot-close-position')?.addEventListener('click', async () => {
+  const ok = await openAgenticConfirmModal({
+    title: 'Close position?',
+    message: 'This will request an immediate close for the specified twilight-bot position id.',
+    confirmText: 'Close position',
+    confirmClass: 'btn primary danger',
+  });
+  if (!ok) return;
   botClosePosition({ userAction: true });
 });
-document.getElementById('btn-agentic-bot-send-paper')?.addEventListener('click', () => {
+document.getElementById('btn-agentic-bot-send-paper')?.addEventListener('click', async () => {
+  const ok = await openAgenticConfirmModal({
+    title: 'Send paper intent?',
+    message: 'This submits a paper-mode intent to twilight-bot.',
+    confirmText: 'Send paper',
+    confirmClass: 'btn primary',
+  });
+  if (!ok) return;
   sendBotIntent({ live: false }, { userAction: true });
 });
-document.getElementById('btn-agentic-bot-send-live')?.addEventListener('click', () => {
+document.getElementById('btn-agentic-bot-send-live')?.addEventListener('click', async () => {
+  const ok = await openAgenticConfirmModal({
+    title: 'Send LIVE intent?',
+    message: 'This can place live orders if bot live-trading safeguards are enabled. Continue?',
+    confirmText: 'Send live',
+    confirmClass: 'btn primary danger',
+  });
+  if (!ok) return;
   sendBotIntent({ live: true }, { userAction: true });
 });
 document.getElementById('btn-agentic-bot-kill-switch')?.addEventListener('click', () => {
   botKillSwitchGet({ userAction: true });
 });
-document.getElementById('btn-agentic-bot-kill-on')?.addEventListener('click', () => {
+document.getElementById('btn-agentic-bot-kill-on')?.addEventListener('click', async () => {
+  const ok = await openAgenticConfirmModal({
+    title: 'Enable kill switch?',
+    message: 'This turns kill switch ON and should block further new trading actions.',
+    confirmText: 'Kill ON',
+    confirmClass: 'btn primary danger',
+  });
+  if (!ok) return;
   botKillSwitchSet(true, { userAction: true });
 });
-document.getElementById('btn-agentic-bot-kill-off')?.addEventListener('click', () => {
+document.getElementById('btn-agentic-bot-kill-off')?.addEventListener('click', async () => {
+  const ok = await openAgenticConfirmModal({
+    title: 'Disable kill switch?',
+    message: 'This turns kill switch OFF and allows new trading actions again.',
+    confirmText: 'Kill OFF',
+    confirmClass: 'btn primary',
+  });
+  if (!ok) return;
   botKillSwitchSet(false, { userAction: true });
 });
-document.getElementById('btn-agentic-bot-caps')?.addEventListener('click', () => {
+document.getElementById('btn-agentic-bot-caps')?.addEventListener('click', async () => {
+  const ok = await openAgenticConfirmModal({
+    title: 'Fetch caps?',
+    message: 'This requests current risk caps from twilight-bot.',
+    confirmText: 'Fetch caps',
+    confirmClass: 'btn primary',
+  });
+  if (!ok) return;
   botCapsGet({ userAction: true });
 });
 document.getElementById('btn-tb-params-autofill')?.addEventListener('click', () => {
