@@ -20,6 +20,12 @@ npm start
 
 Open **http://127.0.0.1:3847** (default). The API binds to **localhost only** for safety.
 
+## Pages
+
+- **Manual** — operator tools for wallet/session setup, faucet, ZkOS account actions, CEX key management, best-strategy table, position P&L, and trade/venue snapshots. Use this when you want direct, step-by-step control.
+- **Automated** — monitor controls and YAML-backed settings (`pollIntervalMs`, strategy filters like CEX venue, risk caps, execution mode, and position auto-close rules). Start/stop the monitor here, run one cycle, and manage automation behavior.
+- **Agentic** — twilight-bot controls (spin up / clone / run external bot workflow) for a separate agentic runtime outside the core dashboard monitor loop.
+
 ### Environment
 
 | Variable | Default | Purpose |

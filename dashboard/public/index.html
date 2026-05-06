@@ -98,6 +98,11 @@
           Agentic
         </button>
       </div>
+      <div class="desk-mode-cheatsheet desk-span-all muted small" aria-label="Mode quick guide">
+        <span><strong>Manual:</strong> direct wallet, ZkOS, keys, and trade actions.</span>
+        <span><strong>Automated:</strong> monitor loop, filters, risk caps, and auto-close settings.</span>
+        <span><strong>Agentic:</strong> twilight-bot runtime controls.</span>
+      </div>
 
       <nav class="flow-nav flow-nav-manual desk-span-all" aria-label="Manual sections">
         <a href="#sec-env">Environment</a>
@@ -126,6 +131,7 @@
       </nav>
 
       <nav class="flow-nav flow-nav-agentic desk-span-all" aria-label="Agentic sections" hidden>
+        <a href="#sec-agentic-bot-console">twilight-bot console</a>
         <a href="#sec-agentic-process">Run</a>
         <a href="#sec-agentic-runtime">Runtime status</a>
         <a href="#sec-agentic-pnl">Agent P&amp;L</a>
@@ -1086,9 +1092,214 @@
         aria-labelledby="tab-desk-agentic"
         hidden
       >
+        <section class="card wide" id="sec-agentic-bot-console">
+          <div class="card-head">
+            <h2>
+              <span class="step-num">1</span> twilight-bot console
+              <span
+                class="help-tip"
+                title="Operator panel for twilight-bot API: inspect trades/positions/ticks, close positions, toggle kill-switch, and send paper/live intents."
+                >?</span
+              >
+            </h2>
+          </div>
+
+          <details class="card-inset" open>
+            <summary class="subhead">
+              Required parameters
+              <span
+                class="help-tip"
+                title="These are the core twilight-bot env controls for live execution and risk limits."
+                >?</span
+              >
+            </summary>
+            <div class="field-grid">
+              <label class="field">
+                <span><code>PAPER</code> (1=paper, 0=live)</span>
+                <input type="text" id="tb-param-PAPER" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span><code>LIVE_TRADING_CONFIRMED</code></span>
+                <input type="text" id="tb-param-LIVE_TRADING_CONFIRMED" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span><code>MAX_OPEN_POSITIONS</code></span>
+                <input type="text" id="tb-param-MAX_OPEN_POSITIONS" inputmode="numeric" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span><code>MAX_NOTIONAL_USD_PER_INTENT</code></span>
+                <input type="text" id="tb-param-MAX_NOTIONAL_USD_PER_INTENT" inputmode="decimal" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span><code>MAX_LEVERAGE</code></span>
+                <input type="text" id="tb-param-MAX_LEVERAGE" inputmode="decimal" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span><code>DAILY_LOSS_STOP_USD</code></span>
+                <input type="text" id="tb-param-DAILY_LOSS_STOP_USD" inputmode="decimal" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span><code>MIN_BALANCE_USD_PER_VENUE</code></span>
+                <input type="text" id="tb-param-MIN_BALANCE_USD_PER_VENUE" inputmode="decimal" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span><code>NYKS_WALLET_ID</code></span>
+                <input type="text" id="tb-param-NYKS_WALLET_ID" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span><code>NYKS_WALLET_PASSPHRASE</code></span>
+                <input type="password" id="tb-param-NYKS_WALLET_PASSPHRASE" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span><code>BINANCE_API_KEY</code></span>
+                <input type="password" id="tb-param-BINANCE_API_KEY" autocomplete="off" />
+                <span class="hint small" id="tb-param-status-BINANCE_API_KEY"></span>
+              </label>
+              <label class="field">
+                <span><code>BINANCE_API_SECRET</code></span>
+                <input type="password" id="tb-param-BINANCE_API_SECRET" autocomplete="off" />
+                <span class="hint small" id="tb-param-status-BINANCE_API_SECRET"></span>
+              </label>
+              <label class="field">
+                <span><code>BYBIT_API_KEY</code></span>
+                <input type="password" id="tb-param-BYBIT_API_KEY" autocomplete="off" />
+                <span class="hint small" id="tb-param-status-BYBIT_API_KEY"></span>
+              </label>
+              <label class="field">
+                <span><code>BYBIT_API_SECRET</code></span>
+                <input type="password" id="tb-param-BYBIT_API_SECRET" autocomplete="off" />
+                <span class="hint small" id="tb-param-status-BYBIT_API_SECRET"></span>
+              </label>
+            </div>
+            <div class="btn-row">
+              <button type="button" class="btn" id="btn-tb-params-autofill">Autofill from dashboard</button>
+              <button type="button" class="btn primary" id="btn-tb-params-save">Save bot params</button>
+            </div>
+            <p class="hint small" id="tb-params-msg">Saved to repo <code>.env</code> (used by twilight-bot process).</p>
+          </details>
+
+          <div class="agentic-bot-grid">
+            <section class="card-inset">
+              <h3 class="subhead">
+                Trades
+                <span class="help-tip" title="Queries /trades (intent history; supports FTS search and limit).">?</span>
+              </h3>
+              <div class="field-grid">
+                <label class="field">
+                  <span>Search</span>
+                  <input type="text" id="agentic-bot-trades-q" autocomplete="off" placeholder="FTS query (optional)" />
+                </label>
+                <label class="field">
+                  <span>Limit</span>
+                  <input type="number" id="agentic-bot-trades-limit" min="1" step="1" placeholder="25" />
+                </label>
+              </div>
+              <div class="btn-row">
+                <button type="button" class="btn small" id="btn-agentic-bot-trades-refresh">Refresh</button>
+              </div>
+              <pre class="out out-compact" id="agentic-bot-trades-out">Loading…</pre>
+            </section>
+
+            <section class="card-inset">
+              <h3 class="subhead">
+                Positions
+                <span class="help-tip" title="Queries /positions and allows closing one position by id via /positions/:id/close.">?</span>
+              </h3>
+              <div class="field-grid">
+                <label class="field">
+                  <span>Venue</span>
+                  <select id="agentic-bot-positions-venue">
+                    <option value="">all</option>
+                    <option value="twilight">twilight</option>
+                    <option value="binance">binance</option>
+                    <option value="bybit">bybit</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Close id</span>
+                  <input
+                    type="text"
+                    id="agentic-bot-close-position-id"
+                    autocomplete="off"
+                    placeholder="e.g. twi_0"
+                  />
+                </label>
+              </div>
+              <div class="btn-row">
+                <button type="button" class="btn small" id="btn-agentic-bot-positions-refresh">Refresh</button>
+                <button type="button" class="btn danger" id="btn-agentic-bot-close-position">Close</button>
+              </div>
+              <pre class="out out-compact" id="agentic-bot-positions-out">Loading…</pre>
+            </section>
+
+            <details class="card-inset">
+              <summary class="subhead">
+                Advanced (optional)
+                <span
+                  class="help-tip"
+                  title="Optional diagnostics and manual override tools. Not required for normal autonomous operation."
+                  >?</span
+                >
+              </summary>
+              <h3 class="subhead">
+                Ticks
+                <span class="help-tip" title="Queries scheduler ticks via /ticks; filter by skill/status and limit.">?</span>
+              </h3>
+              <div class="field-grid">
+                <label class="field">
+                  <span>Skill</span>
+                  <input type="text" id="agentic-bot-ticks-skill" autocomplete="off" placeholder="e.g. funding-arb" />
+                </label>
+                <label class="field">
+                  <span>Status</span>
+                  <input type="text" id="agentic-bot-ticks-status" autocomplete="off" placeholder="noop, intent, timeout…" />
+                </label>
+                <label class="field">
+                  <span>Limit</span>
+                  <input type="number" id="agentic-bot-ticks-limit" min="1" step="1" placeholder="100" />
+                </label>
+              </div>
+              <div class="btn-row">
+                <button type="button" class="btn small" id="btn-agentic-bot-ticks-refresh">Refresh</button>
+              </div>
+              <pre class="out out-compact" id="agentic-bot-ticks-out">Loading…</pre>
+
+              <h3 class="subhead">
+                Operator intent
+                <span
+                  class="help-tip"
+                  title="Sends /trades/paper or /trades/live. Live requires PAPER=0 + LIVE_TRADING_CONFIRMED=YES and confirm_live=true in this request."
+                  >?</span
+                >
+              </h3>
+              <div class="btn-row">
+                <button type="button" class="btn small" id="btn-agentic-bot-kill-switch">Kill switch status</button>
+                <button type="button" class="btn danger" id="btn-agentic-bot-kill-on">Kill ON</button>
+                <button type="button" class="btn" id="btn-agentic-bot-kill-off">Kill OFF</button>
+                <button type="button" class="btn small" id="btn-agentic-bot-caps">Caps</button>
+              </div>
+              <div class="field-grid">
+                <label class="field wide">
+                  <span>Intent JSON</span>
+                  <textarea id="agentic-bot-intent-json" rows="8" spellcheck="false"></textarea>
+                </label>
+                <label class="inline-check wide">
+                  <input type="checkbox" id="agentic-bot-confirm-live" />
+                  <span>confirm_live</span>
+                </label>
+              </div>
+              <div class="btn-row">
+                <button type="button" class="btn" id="btn-agentic-bot-send-paper">Send paper</button>
+                <button type="button" class="btn primary danger" id="btn-agentic-bot-send-live">Send live</button>
+              </div>
+              <pre class="out out-compact" id="agentic-bot-live-out">—</pre>
+            </details>
+          </div>
+        </section>
+
         <section class="card wide" id="sec-agentic-process">
           <div class="card-head">
-            <h2>One-click run</h2>
+            <h2><span class="step-num">2</span> One-click run</h2>
             <div class="btn-row">
               <button type="button" class="btn primary" id="btn-agentic-spin-up">Spin up</button>
               <button type="button" class="btn small" id="btn-agentic-process-status">Status</button>
@@ -1106,7 +1317,7 @@
 
         <section class="card wide" id="sec-agentic-runtime">
           <div class="card-head">
-            <h2>Runtime status</h2>
+            <h2><span class="step-num">3</span> Runtime status</h2>
             <div class="btn-row">
               <button type="button" class="btn small" id="btn-agentic-refresh-health">Refresh</button>
             </div>

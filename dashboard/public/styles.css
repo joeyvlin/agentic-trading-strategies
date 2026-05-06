@@ -236,6 +236,33 @@ h1 {
   line-height: 1;
   cursor: help;
   user-select: none;
+  position: relative;
+}
+
+.help-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  min-width: 220px;
+  max-width: 360px;
+  padding: 0.45rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #0b0d11;
+  color: var(--text);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.help-tip:hover::after,
+.help-tip:focus-visible::after {
+  opacity: 1;
 }
 
 .section-collapse-toggle {
@@ -509,6 +536,26 @@ pre.log {
   max-height: 280px;
 }
 
+.copy-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.65rem;
+}
+
+.copy-row + pre.out,
+.copy-row + pre.log,
+.copy-row + pre.env-raw-pre {
+  margin-top: 0.35rem;
+}
+
+.copy-btn {
+  opacity: 0.9;
+}
+
+.copy-btn:hover {
+  opacity: 1;
+}
+
 .stats {
   margin: 0 0 1rem;
 }
@@ -763,6 +810,17 @@ pre.relayer-out {
 .flow-grid {
   max-width: 900px;
   margin: 0 auto;
+}
+
+.desk-mode-cheatsheet {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 1rem;
+  padding: 0 2rem 0.65rem;
+}
+
+.desk-mode-cheatsheet span {
+  white-space: nowrap;
 }
 
 .step-num {
@@ -1204,4 +1262,21 @@ tr.pos-open-row td.pos-close-cell {
 }
 tr.pos-open-row td.pos-close-cell:hover {
   background: transparent;
+}
+
+.agentic-bot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0.9rem;
+  margin-top: 0.9rem;
+}
+
+.agentic-bot-grid .card-inset {
+  margin-top: 0;
+}
+
+.agentic-bot-grid .subhead {
+  margin-top: 0;
+  display: inline-flex;
+  align-items: center;
 }
