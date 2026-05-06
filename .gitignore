@@ -39,9 +39,6 @@ build/
 # Downloaded / built relayer-cli (see scripts/install-relayer-cli.mjs)
 tools/relayer-cli
 
-# Optional: twilight-bot cloned from dashboard (Agentic tab) — use submodule instead if you want it tracked
-external/twilight-bot/
-
 # Tooling
 coverage/
 .coverage

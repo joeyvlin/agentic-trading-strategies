@@ -126,27 +126,21 @@
       </nav>
 
       <nav class="flow-nav flow-nav-agentic desk-span-all" aria-label="Agentic sections" hidden>
-        <a href="#sec-agentic-runtime">Runtime</a>
-        <a href="#sec-agentic-process">Local process</a>
-        <a href="#sec-agentic-env">Agentic .env</a>
-        <a href="#sec-agentic-safety">Safety</a>
-        <a href="#sec-agentic-strategies">Strategies</a>
-        <a href="#sec-agentic-positions">Positions</a>
-        <a href="#sec-agentic-trades">Trades</a>
-        <a href="#sec-agentic-diagnostics">Diagnostics</a>
+        <a href="#sec-agentic-env">Required setup</a>
+        <a href="#sec-agentic-process">Run</a>
+        <a href="#sec-agentic-runtime">Runtime status</a>
       </nav>
 
       <div id="desk-panel-manual" class="desk-tab-panel" role="tabpanel" aria-labelledby="tab-desk-manual">
       <section class="card wide" id="sec-env">
-        <h2>Environment</h2>
-        <p class="muted">
-          Edit the repo <code>.env</code> from here. The summary below shows which listed variables already have a
-          value on disk versus which are still empty. Each category below is collapsible. Expand
-          <strong>What "testnet" and "mainnet" presets change</strong>
-          for the exact key/value pairs (sourced from <code>dashboard/lib/env-catalog.mjs</code>, aligned with the
-          Twilight skill docs). After changing <code>DASHBOARD_TOKEN</code>, save then enter the same token in the
-          header field and click Store. Secret fields stay unchanged if left blank on save.
-        </p>
+        <h2>
+          Environment
+          <span
+            class="help-tip"
+            title="Edits the repo .env on disk. Secrets stay unchanged if you leave the field blank. Presets write official testnet/mainnet endpoint URLs. If DASHBOARD_TOKEN is set on the server, you must also enter it in the header so requests include x-dashboard-token."
+            >?</span
+          >
+        </h2>
         <div class="btn-row env-actions">
           <button type="button" class="btn primary" id="btn-env-preset-testnet">
             Apply testnet preset
@@ -157,6 +151,7 @@
           <button type="button" class="btn ghost" id="btn-env-reload">Reload</button>
           <button type="button" class="btn" id="btn-env-view-raw">View raw .env</button>
         </div>
+        <div id="env-form-root" class="env-form-root"></div>
         <p class="hint" id="env-path-hint"></p>
         <p class="hint" id="env-msg"></p>
         <div id="env-raw-panel" class="env-raw-panel" hidden>
@@ -165,24 +160,26 @@
           </p>
           <pre id="env-raw-content" class="env-raw-pre"></pre>
         </div>
-        <div id="env-form-root" class="env-form-root"></div>
       </section>
 
       <section class="card wide" id="sec-wallet">
-        <h2><span class="step-num">1</span> Twilight wallet</h2>
-        <p class="muted">
-          The dashboard runs <code>relayer-cli</code> on the server. Choose the <strong>session wallet</strong> and
-          <strong>encryption password</strong> here — all faucet, manage, and relayer actions below use these
-          credentials (no separate password fields). You can omit them if <code>NYKS_WALLET_ID</code> and
-          <code>NYKS_WALLET_PASSPHRASE</code> are set in <code>.env</code>. <strong>Create wallet</strong> still uses
-          its own fields for new wallet encryption.
-        </p>
+        <h2>
+          <span class="step-num">1</span> Twilight wallet
+          <span
+            class="help-tip"
+            title="Select a wallet + passphrase for this browser session. Faucet/Manage/ZkOS actions reuse it. If NYKS_WALLET_ID / NYKS_WALLET_PASSPHRASE exist in .env, you can leave fields blank."
+            >?</span
+          >
+        </h2>
         <div class="card-inset">
-          <h3 class="subhead">Twilight network mode</h3>
-          <p class="muted small">
-            Choose testnet or mainnet for Twilight endpoints and network type. This applies the matching preset to
-            <code>.env</code> so the wallet/faucet/ZkOS setup steps below run against the selected network.
-          </p>
+          <h3 class="subhead">
+            Twilight network mode
+            <span
+              class="help-tip"
+              title="Applies the testnet/mainnet preset into .env (LCD/RPC/ZkOS/relayer/faucet + NETWORK_TYPE). Restart dashboard if you change env outside the UI."
+              >?</span
+            >
+          </h3>
           <div class="btn-row">
             <label class="field" style="min-width: 220px">
               <span>Network</span>
@@ -268,22 +265,16 @@
       </section>
 
       <section class="card wide" id="sec-faucet">
-        <h2><span class="step-num">2</span> Testnet faucet (NYKS)</h2>
-        <p class="muted" id="faucet-hint">
-          Requires <code>FAUCET_BASE_URL</code> in <code>.env</code> (e.g. testnet
-          <code>https://faucet-rpc.twilight.rest</code>). The server runs
-          <code>relayer-cli wallet balance</code> to read your Twilight address, then calls the faucet HTTP API
-          (<code>POST /faucet</code>). Password comes from <strong>Twilight wallet</strong> (step 1) or
-          <code>NYKS_WALLET_PASSPHRASE</code> in <code>.env</code>.
-        </p>
-        <p class="muted small" id="faucet-arch-hint">
-          The desk runs on your machine and loads the repo <code>.env</code> into the <strong>dashboard server
-          process</strong>. <code>relayer-cli</code> inherits that environment (LCD, RPC, ZkOS, relayer,
-          <code>NETWORK_TYPE</code>, faucet). There is no separate “dashboard testnet URL”: whatever is in
-          <code>.env</code> is what the CLI uses. <strong>Test on-chain sats</strong> from <code>POST /mint</code> are
-          for <strong>Twilight testnet</strong> only — use <code>NETWORK_TYPE=testnet</code> and matching endpoints, then
-          restart the server after changing <code>.env</code>.
-        </p>
+        <h2>
+          <span class="step-num">2</span> Testnet faucet (NYKS)
+          <span
+            class="help-tip"
+            title="Requires FAUCET_BASE_URL (testnet). Uses relayer-cli wallet balance to discover recipient, then calls faucet HTTP (POST /faucet) and optionally test sats mint (POST /mint). Set NETWORK_TYPE=testnet + matching endpoints."
+            >?</span
+          >
+        </h2>
+        <p class="muted small" id="faucet-hint">Testnet only. Configure faucet in <code>.env</code>.</p>
+        <p class="muted small" id="faucet-arch-hint" hidden></p>
         <p class="muted small" id="faucet-env-line" aria-live="polite"></p>
         <h3 class="subhead">Wallet for faucet</h3>
         <div class="field-grid">
@@ -320,13 +311,7 @@
         </div>
         <p class="hint small" id="faucet-wallet-verify-line"></p>
         <pre class="out out-compact" id="faucet-tx-status-out" hidden></pre>
-        <p class="hint small" id="faucet-cli-hint">
-          If NYKS/mint HTTP calls succeed but <code>SATS</code> stays <code>0</code> in <code>wallet balance</code>, use
-          <strong>CLI: wallet faucet</strong>. That runs the same <code>get_test_tokens</code> path as the
-          <a href="https://github.com/twilight-project/nyks-wallet/blob/main/QuickStart.md" rel="noopener"
-            >nyks-wallet QuickStart</a
-          >, which can differ from raw <code>POST /faucet</code> + <code>POST /mint</code>.
-        </p>
+        <p class="hint small" id="faucet-cli-hint" hidden></p>
         <div id="faucet-result-summary" class="faucet-result-summary" hidden aria-live="polite">
           <p id="faucet-step-nyks" class="faucet-step"></p>
           <p id="faucet-step-mint" class="faucet-step"></p>
@@ -336,14 +321,14 @@
       </section>
 
       <section class="card wide" id="sec-manage">
-        <h2><span class="step-num">3</span> Manage wallet</h2>
-        <p class="muted">
-          Read-only and session actions via <code>relayer-cli</code>. For <strong>ZkOS fund / account index</strong>, use
-          <a href="#sec-zkos">ZkOS (step 3b)</a>.
-          <a href="#sec-advanced" class="desk-link-automated">Automated → Advanced</a> still has duplicate ZkOS tools and live orders (gated by
-          <code>RELAYER_ALLOW_DASHBOARD_*</code>). Use the password from <strong>Twilight wallet</strong> (step 1), or
-          <code>NYKS_WALLET_PASSPHRASE</code> on the server.
-        </p>
+        <h2>
+          <span class="step-num">3</span> Manage wallet
+          <span
+            class="help-tip"
+            title="Runs relayer-cli read/session commands. Uses the wallet+password from Twilight wallet (step 1) unless NYKS_WALLET_* are set in .env."
+            >?</span
+          >
+        </h2>
         <h3 class="subhead">Wallet for these commands</h3>
         <div class="field-grid">
           <label class="field wide">
@@ -372,95 +357,89 @@
       </section>
 
       <section class="card wide" id="sec-zkos">
-        <h2><span class="step-num">3b</span> ZkOS account (Twilight)</h2>
-        <p class="muted">
-          Real <strong>Twilight</strong> legs need a <strong>funded ZkOS trading account</strong> (an on-chain
-          <strong>NYKS wallet</strong> comes first in step 1 — see skill doc
-          <code>skills/twilight-protocol-agentskill/reference-trader.md</code>, “Wallet vs ZkOS”). You do
-          <strong>not</strong> create an empty ZkOS account separately: the first <strong>Fund</strong> moves sats from
-          your chain balance into ZkOS (usually index 0). Use the same wallet and password as <strong>step 1</strong>.
-          <strong>Which index is used for trades</strong> comes from the index field below (and <code>TWILIGHT_ACCOUNT_INDEX</code>
-          in <code>.env</code> when the field is empty). After a successful <strong>real</strong> Trade desk close, the server
-          runs <code>zkaccount transfer</code> on that index when <code>RELAYER_ALLOW_DASHBOARD_ZK=YES</code> (same gate as
-          manual rotate); set <code>AUTO_ZKOS_ROTATE_AFTER_CLOSE=0</code> in <code>.env</code> to skip automation.
-        </p>
+        <h2>
+          <span class="step-num">3b</span> ZkOS account (Twilight)
+          <span
+            class="help-tip"
+            title="Twilight real trades require a funded ZkOS index. Fund moves sats into ZkOS (often creates index 0). TWILIGHT_ACCOUNT_INDEX is the default for real opens. Memo = order-locked; close/cancel then unlock, then rotate (zkaccount transfer)."
+            >?</span
+          >
+        </h2>
+        <p class="muted small">Fund, list, pick index.</p>
         <div class="card-inset zkos-allow-block">
           <label class="inline-check wallet-real-toggle">
             <input type="checkbox" id="chk-allow-dashboard-zk" />
             <span
-              >Allow <strong>ZkOS</strong> actions from this dashboard (fund / withdraw / rotate). Writes
-              <code>RELAYER_ALLOW_DASHBOARD_ZK=YES</code> to <code>.env</code> and applies immediately (same pattern as
-              “Allow real trading”).</span
+              >Allow ZkOS actions
+              <span
+                class="help-tip"
+                title="Enables fund/transfer/withdraw/rotate by writing RELAYER_ALLOW_DASHBOARD_ZK=YES into .env and applying immediately."
+                >?</span
+              ></span
             >
           </label>
           <p class="hint small" id="zkos-allow-hint"></p>
         </div>
         <p class="hint small" id="zkos-gate-line"></p>
         <div class="card-inset zkos-active-account-panel">
-          <h3 class="subhead">Account used for real Twilight trades</h3>
+          <h3 class="subhead">
+            Real trade index
+            <span class="help-tip" title="Default is TWILIGHT_ACCOUNT_INDEX. Real opens prefer Coin (not Memo).">?</span>
+          </h3>
           <p class="zkos-trade-account-line" id="zkos-trade-account-line"></p>
           <p class="hint small" id="zkos-trade-account-sub"></p>
           <div class="field-grid">
             <label class="field wide">
-              <span>Select ZkOS account</span>
+              <span>Account</span>
               <select id="zkos-active-account-select" aria-describedby="zkos-trade-account-hint">
                 <option value="">— List ZkOS accounts (below) to load rows —</option>
               </select>
             </label>
             <label class="field">
-              <span>Index → <code>TWILIGHT_ACCOUNT_INDEX</code></span>
+              <span>Index</span>
               <input type="number" id="zkos-strategy-index" min="0" step="1" placeholder="0" />
             </label>
           </div>
           <div class="btn-row">
             <button type="button" class="btn primary" id="btn-zkos-save-index">Save default index</button>
           </div>
-          <p class="hint small">
-            Writes <code>TWILIGHT_ACCOUNT_INDEX</code> to <code>.env</code> for real strategy runs and reloads the
-            process environment.
-          </p>
+          <p class="hint small" hidden></p>
           <p class="hint small" id="zkos-trade-account-hint">
-            Strategy <strong>Real</strong> runs and relayer <code>open-trade</code> use this index. Pick an account from the
-            list output (dropdown shows <strong>io_type</strong> / <strong>tx_type</strong> from the table). Adjust the
-            number if needed, then <strong>Save default index</strong>. Fund / Rotate below use their own fields (rotate
-            uses “Rotate from index”). <strong>Memo</strong> means the account is locked in an order flow — use
-            <strong>Automated → Advanced → Relayer</strong>: <em>Close trade</em> (or <em>Cancel trade</em> for unfilled limits), then
-            after settlement <em>Unlock settled close</em>; if the submit failed use <em>Unlock failed order</em>. Then
-            <code>zkaccount transfer</code> (Rotate) before the next <code>open-trade</code> on a fresh address (see skill
-            order lifecycle). If auto-rotate after Trade desk close is off or blocked, use <strong>Transfer</strong> at
-            100% here from the closed index yourself.
+            <span class="help-tip" title="Memo = order-locked. After close/cancel: unlock, then rotate via transfer to a fresh address.">?</span>
           </p>
         </div>
 
         <div class="card-inset" id="zkos-account-inspector">
-          <h3 class="subhead">Account detail &amp; actions</h3>
+          <h3 class="subhead">
+            Account actions
+            <span class="help-tip" title="Select an account above to enable action buttons.">?</span>
+          </h3>
           <p class="hint small" id="zkos-inspector-gates"></p>
-          <p id="zkos-inspector-empty" class="muted small">
-            Pick an account in <strong>Select ZkOS account</strong> above (run <strong>List ZkOS accounts</strong> first).
-          </p>
+          <p id="zkos-inspector-empty" class="muted small">Select an account.</p>
           <div id="zkos-inspector-body" hidden>
             <div class="table-wrap">
               <table class="data" id="zkos-inspector-fields"></table>
             </div>
             <label class="inline-check wide">
               <input type="checkbox" id="zkos-inspector-raw-toggle" />
-              <span>Show raw JSON row (only when the list response was JSON)</span>
+              <span>Raw JSON</span>
             </label>
             <pre class="out out-compact" id="zkos-inspector-raw" hidden></pre>
             <label class="inline-check wide">
               <input type="checkbox" id="zkos-insp-close-nowait" />
-              <span>Close trade with <code>--no-wait</code></span>
+              <span>Close: <code>--no-wait</code></span>
             </label>
             <p class="hint small">
-              <strong>Close</strong> / <strong>Cancel</strong> need <code>RELAYER_ALLOW_DASHBOARD_ORDERS=YES</code>.
-              <strong>Unlock settled / failed</strong> work if <strong>either</strong>
-              <code>RELAYER_ALLOW_DASHBOARD_ORDERS=YES</code> <em>or</em>
-              <code>RELAYER_ALLOW_DASHBOARD_ZK=YES</code>. <strong>Rotate</strong> and <strong>Withdraw</strong> need Zk
-              gate. Close also needs wallet + password (step&nbsp;1).
+              Gates.
+              <span
+                class="help-tip"
+                title="Close/Cancel need RELAYER_ALLOW_DASHBOARD_ORDERS=YES. Unlock-close/unlock-failed need either ORDERS=YES or ZK=YES. Rotate/Withdraw need ZK=YES."
+                >?</span
+              >
             </p>
             <div class="field-grid">
               <label class="field wide">
-                <span>Withdraw to wallet (sats)</span>
+                <span>Withdraw sats</span>
                 <input
                   type="text"
                   id="zkos-insp-withdraw-sats"
@@ -477,8 +456,12 @@
               </div>
             </div>
             <p class="hint small">
-              <code>zkaccount withdraw</code> sends sats from this ZkOS index to the same wallet’s <strong>spendable on-chain
-              (SATS)</strong> balance (step&nbsp;1 NYKS wallet) — not the NYKS <em>token</em> line. Refresh balance after.
+              To on-chain SATS.
+              <span
+                class="help-tip"
+                title="Withdraw moves sats from this ZkOS index back to the same wallet’s spendable on-chain SATS balance (not NYKS token). Refresh balance after."
+                >?</span
+              >
             </p>
             <div class="btn-row" id="zkos-inspector-actions">
               <button type="button" class="btn small" id="btn-zkos-insp-use-index" disabled>Use for strategy index</button>
@@ -507,16 +490,11 @@
         <div class="field-grid">
           <label class="field wide zkos-pct-field">
             <span
-              >Fund % of spendable <span id="zkos-fund-pct-readout" class="muted">0%</span>
-              <span class="muted small">(move slider after refresh)</span></span
+              >Fund % <span id="zkos-fund-pct-readout" class="muted">0%</span></span
             >
             <input type="range" id="zkos-fund-pct" min="0" max="100" value="0" disabled />
           </label>
-          <p class="hint small zkos-fee-reserve-hint">
-            At high percentages (most of your spendable), the slider shaves a small reserve for fee edge cases. If you
-            fund a modest fraction and still see “Insufficient balance”, that is usually <strong>not</strong> fees — the
-            spendable figure here may not match what the relayer can use; compare Manage → Balance output.
-          </p>
+          <p class="hint small zkos-fee-reserve-hint" hidden></p>
           <label class="field">
             <span>Fund (sats)</span>
             <input type="text" id="zkos-fund-sats" inputmode="numeric" placeholder="e.g. 10000" />
@@ -524,11 +502,12 @@
         </div>
         <h3 class="subhead">Transfer / rotate ZkOS balance</h3>
         <p class="hint small">
-          <code>zkaccount transfer</code> (slider at <strong>100%</strong>) moves the <strong>entire</strong> source balance
-          into one <strong>new</strong> ZkOS account — you cannot target an existing index as the destination. Below 100%,
-          the desk runs <code>zkaccount split</code> with two parts that sum to the listed source total (creates
-          <strong>two</strong> new accounts). Parsed balances are best-effort from the last list output; if the relayer
-          rejects the amount, try <strong>List ZkOS accounts</strong> again or use Automated → Advanced → relayer CLI.
+          100% = rotate.
+          <span
+            class="help-tip"
+            title="100% runs zkaccount transfer (moves all funds into a NEW ZkOS account). <100% runs split (creates TWO new accounts). Destination is always new account(s)."
+            >?</span
+          >
         </p>
         <div class="field-grid">
           <label class="field wide">
@@ -550,8 +529,8 @@
           </label>
         </div>
         <p class="hint small" id="zkos-transfer-hint-text">
-          The <strong>To</strong> selector is fixed: incoming funds always open new ZkOS accounts. Use
-          <strong>List ZkOS accounts</strong> after success to see new indices.
+          To is always new account(s).
+          <span class="help-tip" title="Run List ZkOS accounts after success to see new indices.">?</span>
         </p>
         <div class="btn-row">
           <button type="button" class="btn primary" id="btn-zkos-accounts">List ZkOS accounts</button>
@@ -562,13 +541,14 @@
       </section>
 
       <section class="card wide" id="sec-keys">
-        <h2><span class="step-num">4</span> Binance / Bybit API keys</h2>
-        <p class="muted">
-          Stored server-side in <code>data/exchange-keys.json</code> (mode <code>0600</code>, not served as static
-          files). Leave a field blank to keep the previous value. The agent monitor still reads
-          <code>BINANCE_*</code> / <code>BYBIT_*</code> from <code>.env</code> — this file is for the desk and future
-          wiring.
-        </p>
+        <h2>
+          <span class="step-num">4</span> Binance / Bybit API keys
+          <span
+            class="help-tip"
+            title="Stored server-side in data/exchange-keys.json (0600). Leave blank to keep existing. Used by trade desk + monitor key sync."
+            >?</span
+          >
+        </h2>
         <p class="hint" id="exchange-status"></p>
         <p class="hint" id="exchange-last-status"></p>
         <div class="field-grid">
@@ -627,10 +607,7 @@
           </div>
         </div>
         <p class="muted" id="strategies-meta"></p>
-        <p class="hint small" id="strategies-filter-hint">
-          Leave both unchecked to list all strategies. Check one or both to show only rows whose CEX leg matches
-          (Binance futures vs Bybit per Strategy API flags).
-        </p>
+        <p class="hint small" id="strategies-filter-hint" hidden></p>
         <div class="table-wrap">
           <table>
             <thead>
@@ -648,22 +625,23 @@
             <tbody id="strategies-body"></tbody>
           </table>
         </div>
-        <p class="hint">
-          <strong>Sim</strong> runs one agent cycle for that strategy in <strong>simulation</strong> mode.
-          <strong>Real</strong> uses your YAML/env execution mode and requires exchange keys and
-          <strong>Allow real trading</strong> in Twilight wallet (step 1).
+        <p class="hint small">
+          Sim = no live orders. Real = live legs (requires keys + Allow real trading).
+          <span class="help-tip" title="Real uses YAML execution.mode + CONFIRM_REAL_TRADING gate. Twilight leg requires funded ZkOS index; CEX legs require keys.">?</span>
         </p>
       </section>
 
       <section class="card wide" id="sec-agent-pnl">
         <div class="card-head">
-          <h2>Agent P&amp;L (positions)</h2>
+          <h2>
+            Agent P&amp;L (positions)
+            <span class="help-tip" title="Open/closed positions are tracked in the on-disk ledger. Use Refresh to sync view.">?</span>
+          </h2>
           <button type="button" class="btn small" id="btn-pnl-refresh">Refresh</button>
         </div>
-        <p class="muted" id="pnl-note-line"></p>
+        <p class="muted" id="pnl-note-line" hidden></p>
         <dl class="stats stats-cols" id="pnl-stats"></dl>
-        <h3 class="subhead">Open (unrealized)</h3>
-        <p class="muted small">Click a row (not <strong>Close</strong>) for leg notionals, direction, leverage, and venue snapshot.</p>
+        <h3 class="subhead">Open</h3>
         <div class="table-wrap">
           <table>
             <thead>
@@ -678,7 +656,7 @@
             <tbody id="positions-open-body"></tbody>
           </table>
         </div>
-        <h3 class="subhead">Closed (realized)</h3>
+        <h3 class="subhead">Closed</h3>
         <div class="table-wrap">
           <table>
             <thead>
@@ -706,9 +684,8 @@
         </div>
         <p class="muted" id="trade-desk-meta"></p>
         <p class="muted small">
-          Agent runs (saved to disk) with Twilight / CEX execution summaries. Rows with the same strategy share a
-          colored edge. Ledger status links open positions in Agent P&amp;L. Live blocks query Binance / Bybit (ccxt) and
-          Twilight <code>order account-summary</code> (account from <code>TWILIGHT_ACCOUNT_INDEX</code>).
+          History + live venue snapshots.
+          <span class="help-tip" title="Rows are persisted agent runs. Live blocks query Binance/Bybit via ccxt and Twilight via order account-summary (TWILIGHT_ACCOUNT_INDEX).">?</span>
         </p>
         <h3 class="subhead">Agent executions (pending / open / history)</h3>
         <div class="table-wrap table-wrap-scroll">
@@ -771,27 +748,26 @@
       >
         <section class="card wide" id="sec-agent">
           <h2>Automated trading</h2>
-          <p class="muted">
-            Stay-alive monitor: <strong>one</strong> loop at a time polls the Strategy API on <code>pollIntervalMs</code> for the newest
-            strategies, applies CEX / risk filters, enforces caps, then executes in <strong>simulation</strong> or <strong>real</strong> per
-            <code>execution.mode</code> and <code>AGENT_MODE</code> in <code>.env</code>. Settings edit
-            <code>configs/agent.monitor.yaml</code> (comments are not preserved on save). Real mode needs
-            <strong>Allow real trading</strong> in Twilight wallet (step 1). ZkOS: auto-pick prefers a <strong>Coin</strong> (non-Memo) index for
-            opens; after a real close + rotate, the server can persist the new <code>TWILIGHT_ACCOUNT_INDEX</code> to <code>.env</code> when enabled below.
+          <p class="muted small">
+            Auto-polls Strategy API and runs one strategy per tick.
+            <span
+              class="help-tip"
+              title="One monitor loop at a time. Uses configs/agent.monitor.yaml + .env. Real mode requires Allow real trading (CONFIRM_REAL_TRADING=YES). ZkOS auto-pick prefers Coin (non-Memo)."
+              >?</span
+            >
           </p>
           <div class="card-inset automated-panel-intro">
             <h3 class="subhead">Run once without starting the loop</h3>
             <p class="muted small">
-              Executes a single poll cycle using the saved YAML and execution mode (same code path as the monitor timer).
-              For a forced simulation shot regardless of YAML, open <a href="#sec-advanced">Advanced</a> below and use
-              <strong>Run simulation once</strong>.
+              Runs one poll cycle (uses saved YAML/mode).
+              <span class="help-tip" title="Forced simulation is in Advanced → Run simulation once.">?</span>
             </p>
             <div class="btn-row">
               <button type="button" class="btn" id="btn-agent-run-once">Run one poll cycle</button>
             </div>
             <pre class="out out-compact" id="agent-run-once-out" hidden></pre>
             <h3 class="subhead">Setup checklist</h3>
-            <p class="muted small">Links open the <strong>Manual</strong> tab and scroll to the section.</p>
+            <p class="muted small">Shortcuts:</p>
             <ul class="automated-checklist muted small">
               <li><code>STRATEGY_API_KEY</code> — <a href="#sec-env" class="desk-link-manual" data-sec="sec-env">Environment</a></li>
               <li>CEX keys for real legs — <a href="#sec-keys" class="desk-link-manual" data-sec="sec-keys">CEX keys</a></li>
@@ -975,7 +951,10 @@
 
             <section class="card inner-card">
               <h2>Portfolio reset</h2>
-              <p class="muted">Clears in-memory agent portfolio snapshot only (not the position ledger in Agent P&amp;L).</p>
+              <p class="muted">
+                Clears in-memory snapshot only.
+                <span class="help-tip" title="Does not delete the on-disk position ledger shown in Manual → Agent P&L.">?</span>
+              </p>
               <button type="button" class="btn ghost small" id="btn-reset-portfolio">Reset portfolio state</button>
             </section>
 
@@ -1011,15 +990,15 @@
 
             <section class="card inner-card wide relayer-section">
               <div class="card-head">
-                <h2>Relayer — ZkOS &amp; orders</h2>
+                <h2>
+                  Relayer — ZkOS &amp; orders
+                  <span class="help-tip" title="Danger zone: direct relayer-cli actions. Gates: RELAYER_ALLOW_DASHBOARD_ZK for ZkOS (fund/transfer/rotate/withdraw), RELAYER_ALLOW_DASHBOARD_ORDERS for open/close/cancel. Unlock-close/unlock-failed works with either gate.">?</span>
+                </h2>
                 <button type="button" class="btn small" id="btn-relayer-meta">Meta</button>
               </div>
               <p class="muted" id="relayer-meta-line"></p>
               <p class="hint" id="relayer-binary-hint"></p>
-              <p class="hint" id="relayer-gate-hint">
-                ZkOS: <code>RELAYER_ALLOW_DASHBOARD_ZK=YES</code> · Orders:
-                <code>RELAYER_ALLOW_DASHBOARD_ORDERS=YES</code> · Unlock-close / unlock-failed: either gate
-              </p>
+              <p class="hint" id="relayer-gate-hint" hidden></p>
               <div class="field-grid">
                 <label class="field">
                   <span>Fund (sats)</span>
@@ -1077,9 +1056,8 @@
                 <button type="button" class="btn danger" id="btn-relayer-cancel">Cancel trade</button>
               </div>
               <p class="hint small">
-                After a position <strong>settles</strong> (or liquidates), account stays <code>Memo</code> until
-                <code>unlock-close-order</code>. If open failed, use <code>unlock-failed-order</code>. Same index field as
-                above.
+                Memo? Unlock it.
+                <span class="help-tip" title="After settlement (or liquidation), index remains Memo until unlock-close-order. If submit failed, use unlock-failed-order. Use the same index field above.">?</span>
               </p>
               <div class="btn-row">
                 <button type="button" class="btn" id="btn-relayer-unlock-close">Unlock settled close</button>
@@ -1108,198 +1086,53 @@
         aria-labelledby="tab-desk-agentic"
         hidden
       >
-        <section class="card wide" id="sec-agentic-runtime">
-          <div class="card-head">
-            <h2>Agentic Trading runtime</h2>
-            <div class="btn-row">
-              <button type="button" class="btn small" id="btn-agentic-refresh-health">Refresh</button>
-            </div>
-          </div>
+        <section class="card wide" id="sec-agentic-env">
+          <h2>Required setup</h2>
           <p class="muted">
-            Dashboard proxies the twilight-bot HTTP API through <code>/api/twilight-bot/*</code>. Configure
-            <code>TWILIGHT_BOT_BASE_URL</code> (default <code>http://127.0.0.1:8787</code>) and optionally
-            <code>TWILIGHT_BOT_API_TOKEN</code> in <code>.env</code>.
+            No required inputs. Click <strong>Spin up twilight-bot</strong> below.
           </p>
-          <p class="hint" id="agentic-health-line">Loading…</p>
-          <pre class="out out-compact" id="agentic-health-out">Loading…</pre>
+          <p class="muted small">
+            On first spin-up, the dashboard will auto-write:
+            <code>TWILIGHT_BOT_ALLOW_DASHBOARD_SPAWN=YES</code>,
+            <code>TWILIGHT_BOT_BASE_URL=http://127.0.0.1:8787</code>,
+            and (if missing) <code>STRATEGY_API_KEY</code> using the documented example key.
+            Replace the example key later in <strong>Manual → Environment</strong>.
+          </p>
+          <p class="hint" id="agentic-env-msg"></p>
         </section>
 
         <section class="card wide" id="sec-agentic-process">
           <div class="card-head">
-            <h2>Local twilight-bot process</h2>
+            <h2>One-click run</h2>
             <div class="btn-row">
-              <button type="button" class="btn small" id="btn-agentic-process-status">Refresh status</button>
-              <button type="button" class="btn primary" id="btn-agentic-process-start">Start</button>
+              <button type="button" class="btn primary" id="btn-agentic-spin-up">Spin up</button>
+              <button type="button" class="btn small" id="btn-agentic-process-status">Status</button>
+              <button type="button" class="btn small" id="btn-agentic-refresh-health">Health</button>
               <button type="button" class="btn danger" id="btn-agentic-process-stop">Stop</button>
             </div>
           </div>
           <p class="muted small">
-            Spawns a child from this dashboard (same machine). Requires
-            <code>TWILIGHT_BOT_ALLOW_DASHBOARD_SPAWN=YES</code> and <code>TWILIGHT_BOT_REPO_DIR</code> in Agentic .env.
-            Default command is <code>npm start</code> in that directory (override with <code>TWILIGHT_BOT_SPAWN</code>).
-            Stop sends <code>SIGTERM</code>. HTTP proxy still uses <code>TWILIGHT_BOT_BASE_URL</code>.
+            <strong>Spin up</strong> runs: submodule init, <code>npm install</code>, <code>npm run build</code>, then
+            <code>npm start</code>.
           </p>
           <p class="hint" id="agentic-process-line">—</p>
           <pre class="out out-compact" id="agentic-process-out">—</pre>
         </section>
 
-        <section class="card wide" id="sec-agentic-env">
-          <h2>Agentic .env</h2>
+        <section class="card wide" id="sec-agentic-runtime">
+          <div class="card-head">
+            <h2>Runtime status</h2>
+            <div class="btn-row">
+              <button type="button" class="btn small" id="btn-agentic-refresh-health">Refresh</button>
+            </div>
+          </div>
           <p class="muted">
-            Agentic-only env controls. Saves directly to the repo <code>.env</code> used by this dashboard and runtime.
+            Shows health from the running local twilight-bot process.
           </p>
-          <div class="field-grid">
-            <label class="field wide">
-              <span>twilight-bot base URL <code>TWILIGHT_BOT_BASE_URL</code></span>
-              <input
-                type="text"
-                id="agentic-env-base-url"
-                autocomplete="off"
-                placeholder="http://127.0.0.1:8787"
-              />
-            </label>
-            <label class="field wide">
-              <span>twilight-bot bearer token <code>TWILIGHT_BOT_API_TOKEN</code></span>
-              <input
-                type="password"
-                id="agentic-env-api-token"
-                autocomplete="off"
-                placeholder="leave blank to keep existing token"
-              />
-            </label>
-            <label class="field">
-              <span>timeout ms <code>TWILIGHT_BOT_TIMEOUT_MS</code></span>
-              <input type="text" id="agentic-env-timeout-ms" inputmode="numeric" placeholder="15000" />
-            </label>
-            <label class="field wide">
-              <span>clone path <code>TWILIGHT_BOT_REPO_DIR</code></span>
-              <input
-                type="text"
-                id="agentic-env-repo-dir"
-                autocomplete="off"
-                placeholder="/absolute/path/to/twilight-bot"
-              />
-            </label>
-            <label class="field wide">
-              <span>spawn shell command <code>TWILIGHT_BOT_SPAWN</code></span>
-              <input type="text" id="agentic-env-spawn" autocomplete="off" placeholder="npm start" />
-            </label>
-            <label class="inline-check wide">
-              <input type="checkbox" id="agentic-env-allow-spawn" />
-              <span>Allow dashboard to spawn twilight-bot (<code>TWILIGHT_BOT_ALLOW_DASHBOARD_SPAWN=YES</code>)</span>
-            </label>
-            <label class="field wide">
-              <span>git clone URL <code>TWILIGHT_BOT_GIT_URL</code></span>
-              <input
-                type="text"
-                id="agentic-env-git-url"
-                autocomplete="off"
-                placeholder="https://github.com/runnerelectrode/twilight-bot.git"
-              />
-            </label>
-            <label class="inline-check wide">
-              <input type="checkbox" id="agentic-env-allow-clone" />
-              <span>Allow dashboard to clone repo (<code>TWILIGHT_BOT_ALLOW_DASHBOARD_CLONE=YES</code>)</span>
-            </label>
-          </div>
-          <div class="btn-row">
-            <button type="button" class="btn" id="btn-agentic-repo-clone">Clone twilight-bot</button>
-            <button type="button" class="btn primary" id="btn-agentic-env-save">Save Agentic .env</button>
-            <button type="button" class="btn ghost" id="btn-agentic-env-reload">Reload Agentic .env</button>
-          </div>
-          <p class="hint small">
-            <strong>Clone</strong> runs <code>git clone --depth 1</code> into <code>TWILIGHT_BOT_REPO_DIR</code> if set,
-            otherwise <code>&lt;repo&gt;/external/twilight-bot</code>, then writes <code>TWILIGHT_BOT_REPO_DIR</code> to
-            <code>.env</code>. URL must be <code>https://github.com/org/repo(.git)</code>. For a tracked copy, prefer a
-            <a href="https://git-scm.com/book/en/v2/Git-Tools-Submodules" rel="noopener">submodule</a> (see dashboard README).
-          </p>
-          <p class="hint" id="agentic-env-msg"></p>
+          <p class="hint" id="agentic-health-line">Loading…</p>
+          <pre class="out out-compact" id="agentic-health-out">Loading…</pre>
         </section>
 
-        <section class="card wide" id="sec-agentic-safety">
-          <h2>Safety controls</h2>
-          <div class="btn-row">
-            <button type="button" class="btn small" id="btn-agentic-refresh-safety">Refresh safety</button>
-            <button type="button" class="btn danger" id="btn-agentic-kill-on">Kill switch ON</button>
-            <button type="button" class="btn" id="btn-agentic-kill-off">Kill switch OFF</button>
-          </div>
-          <p class="hint" id="agentic-safety-line"></p>
-          <div class="field-grid">
-            <label class="field">
-              <span>Max notional USD</span>
-              <input type="text" id="agentic-cap-notional" inputmode="decimal" placeholder="optional" />
-            </label>
-            <label class="field">
-              <span>Max leverage</span>
-              <input type="text" id="agentic-cap-leverage" inputmode="decimal" placeholder="optional" />
-            </label>
-            <label class="field">
-              <span>Daily loss stop USD</span>
-              <input type="text" id="agentic-cap-daily-loss" inputmode="decimal" placeholder="optional" />
-            </label>
-            <label class="inline-check wide">
-              <input type="checkbox" id="agentic-cap-confirm-live" />
-              <span>confirm_live for cap increases in live mode</span>
-            </label>
-          </div>
-          <div class="btn-row">
-            <button type="button" class="btn primary" id="btn-agentic-save-caps">Save caps</button>
-          </div>
-          <pre class="out out-compact" id="agentic-safety-out"></pre>
-        </section>
-
-        <section class="card wide" id="sec-agentic-strategies">
-          <div class="card-head">
-            <h2>Strategies</h2>
-            <div class="btn-row">
-              <button type="button" class="btn small" id="btn-agentic-refresh-strategies">Refresh</button>
-            </div>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Name</th>
-                  <th>Category</th>
-                  <th>Risk</th>
-                  <th>APY</th>
-                </tr>
-              </thead>
-              <tbody id="agentic-strategies-body"></tbody>
-            </table>
-          </div>
-        </section>
-
-        <section class="card wide" id="sec-agentic-positions">
-          <div class="card-head">
-            <h2>Positions</h2>
-            <div class="btn-row">
-              <button type="button" class="btn small" id="btn-agentic-refresh-positions">Refresh</button>
-            </div>
-          </div>
-          <pre class="out out-compact" id="agentic-positions-out">Loading…</pre>
-        </section>
-
-        <section class="card wide" id="sec-agentic-trades">
-          <div class="card-head">
-            <h2>Trades</h2>
-            <div class="btn-row">
-              <button type="button" class="btn small" id="btn-agentic-refresh-trades">Refresh</button>
-            </div>
-          </div>
-          <pre class="out out-compact" id="agentic-trades-out">Loading…</pre>
-        </section>
-
-        <section class="card wide" id="sec-agentic-diagnostics">
-          <div class="card-head">
-            <h2>Diagnostics (ticks)</h2>
-            <div class="btn-row">
-              <button type="button" class="btn small" id="btn-agentic-refresh-ticks">Refresh</button>
-            </div>
-          </div>
-          <pre class="out out-compact" id="agentic-ticks-out">Loading…</pre>
-        </section>
       </div>
     </main>
 

@@ -66,12 +66,19 @@ Read-only API examples: `GET /api/relayer/meta`, `POST /api/relayer/ping`, `POST
 
 ## Twilight-bot (Agentic tab)
 
-Ways to get the **twilight-bot** source on disk:
+**twilight-bot** ships as a **git submodule** at `external/twilight-bot` (see `.gitmodules`). Clone this repo with submodules:
 
-| Approach | When to use |
+```bash
+git clone --recurse-submodules <this-repo-url>
+# or, after a normal clone:
+git submodule update --init --depth 1 external/twilight-bot
+```
+
+**One-click spin up** (Agentic tab → **Spin up twilight-bot**): runs `git submodule update --init`, `npm install`, `npm run build`, and `npm start` in that directory. Set `TWILIGHT_BOT_ALLOW_DASHBOARD_SPAWN=YES` in `.env` first. Leave `TWILIGHT_BOT_REPO_DIR` empty to use the default submodule path (or set it explicitly). The child process inherits the repo `.env` (Strategy API keys, etc.).
+
+| Fallback | When to use |
 |----------|-------------|
-| **Git submodule** (tracked in this repo) | `git submodule add https://github.com/runnerelectrode/twilight-bot.git external/twilight-bot` then set `TWILIGHT_BOT_REPO_DIR` to that path. |
-| **Manual clone** | `git clone …` anywhere; point `TWILIGHT_BOT_REPO_DIR` at the checkout. |
-| **Dashboard clone button** | Agentic → enable **Allow dashboard to clone repo** (`TWILIGHT_BOT_ALLOW_DASHBOARD_CLONE=YES`), save `.env`, then **Clone twilight-bot**. Clones into `TWILIGHT_BOT_REPO_DIR` if set, else `<repo>/external/twilight-bot` (gitignored), then writes `TWILIGHT_BOT_REPO_DIR` to `.env`. Only `https://github.com/org/repo(.git)` URLs are allowed (`TWILIGHT_BOT_GIT_URL`). |
+| **Manual clone** | Point `TWILIGHT_BOT_REPO_DIR` at any checkout. |
+| **Dashboard clone** | If you cannot use submodules: `TWILIGHT_BOT_ALLOW_DASHBOARD_CLONE=YES` and **Clone twilight-bot** (https GitHub URLs only). |
 
-The dashboard does **not** add twilight-bot as an npm dependency; treat it as its own service (clone/submodule + `npm start` there).
+twilight-bot is **not** an npm dependency of the dashboard; it runs as a separate Node process (`better-sqlite3` may need local build tools for `npm install`).

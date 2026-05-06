@@ -312,7 +312,7 @@ export const ENV_DEFS = [
     key: 'TWILIGHT_BOT_REPO_DIR',
     group: 'twilight_bot',
     label: 'Twilight-bot repo directory',
-    help: 'Absolute path to a local twilight-bot checkout (for dashboard Start).',
+    help: 'Absolute path to twilight-bot. Leave empty to use git submodule at <repo>/external/twilight-bot (recommended).',
     type: 'text',
   },
   {

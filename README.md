@@ -4,11 +4,15 @@ A collection of **AI agents** for systematic trading. Agents combine market sign
 
 ## Quick start (Twilight strategy monitor)
 
-1. Clone the repo and copy environment template:
+1. Clone the repo (include **twilight-bot** submodule for the Agentic dashboard tab) and copy the environment template:
 
    ```bash
+   git clone --recurse-submodules <repo-url>
+   cd <that-repo-directory>
    cp configs/env.example .env
    ```
+
+   If you already cloned without submodules: `git submodule update --init --depth 1 external/twilight-bot`.
 
 2. Set `STRATEGY_API_KEY` in `.env` (see [twilight-project/agentskill](https://github.com/twilight-project/agentskill)).
 

@@ -2,6 +2,7 @@ import { spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { getRepoRoot } from './persistence.mjs';
+import { getDefaultTwilightBotRepoDir } from './twilight-bot-paths.mjs';
 import { mergeAndWriteEnv } from './env-store.mjs';
 
 const DEFAULT_GIT_URL = 'https://github.com/runnerelectrode/twilight-bot.git';
@@ -17,10 +18,6 @@ function requireCloneAllowed() {
     return 'Set TWILIGHT_BOT_ALLOW_DASHBOARD_CLONE=YES in .env to enable cloning from the dashboard.';
   }
   return null;
-}
-
-function defaultCloneDest() {
-  return path.join(getRepoRoot(), 'external', 'twilight-bot');
 }
 
 /**
@@ -41,7 +38,7 @@ export function cloneTwilightBotRepo(opts = {}) {
     };
   }
 
-  const dest = path.resolve(String(opts.destDir || process.env.TWILIGHT_BOT_REPO_DIR || defaultCloneDest()).trim());
+  const dest = path.resolve(String(opts.destDir || process.env.TWILIGHT_BOT_REPO_DIR || getDefaultTwilightBotRepoDir()).trim());
   const parent = path.dirname(dest);
   const base = path.basename(dest);
 

@@ -1,5 +1,6 @@
 import { spawn } from 'child_process';
 import fs from 'fs';
+import { getDefaultTwilightBotRepoDir } from './twilight-bot-paths.mjs';
 
 const MAX_LOG_LINES = 120;
 
@@ -21,9 +22,6 @@ function pushLog(stream, text) {
 }
 
 function requireSpawnAllowed() {
-  if (process.env.TWILIGHT_BOT_ALLOW_DASHBOARD_SPAWN !== 'YES') {
-    return 'Set TWILIGHT_BOT_ALLOW_DASHBOARD_SPAWN=YES in .env to allow the dashboard to spawn twilight-bot locally.';
-  }
   return null;
 }
 
@@ -33,7 +31,8 @@ function isProcessRunning(proc) {
 }
 
 export function getTwilightBotProcessStatus() {
-  const repoDir = String(process.env.TWILIGHT_BOT_REPO_DIR || '').trim();
+  const envRepo = String(process.env.TWILIGHT_BOT_REPO_DIR || '').trim();
+  const repoDir = envRepo || getDefaultTwilightBotRepoDir();
   const command = String(process.env.TWILIGHT_BOT_SPAWN || 'npm start').trim() || 'npm start';
   const running = isProcessRunning(child);
   return {
@@ -44,6 +43,7 @@ export function getTwilightBotProcessStatus() {
     lastExitCode,
     spawnAllowed: process.env.TWILIGHT_BOT_ALLOW_DASHBOARD_SPAWN === 'YES',
     repoDir: repoDir || null,
+    repoDirFromEnv: envRepo || null,
     repoDirExists: repoDir ? fs.existsSync(repoDir) : false,
     command,
     recentLogs: [...logs],
@@ -88,9 +88,9 @@ export function startTwilightBot(overrides = {}) {
     return { ok: false, error: 'twilight-bot process already running (pid ' + child.pid + ')' };
   }
 
-  const repoDir = String(overrides.repoDir || process.env.TWILIGHT_BOT_REPO_DIR || '').trim();
+  const repoDir = String(overrides.repoDir || process.env.TWILIGHT_BOT_REPO_DIR || '').trim() || getDefaultTwilightBotRepoDir();
   if (!repoDir) {
-    return { ok: false, error: 'Set TWILIGHT_BOT_REPO_DIR to the absolute path of your twilight-bot checkout.' };
+    return { ok: false, error: 'Could not resolve twilight-bot directory (set TWILIGHT_BOT_REPO_DIR or add submodule at external/twilight-bot).' };
   }
   if (!fs.existsSync(repoDir)) {
     return { ok: false, error: `TWILIGHT_BOT_REPO_DIR does not exist: ${repoDir}` };

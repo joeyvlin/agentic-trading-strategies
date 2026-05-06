@@ -558,12 +558,7 @@ function initDeskTabs() {
   if (
     location.hash === '#sec-agentic-runtime' ||
     location.hash === '#sec-agentic-process' ||
-    location.hash === '#sec-agentic-env' ||
-    location.hash === '#sec-agentic-safety' ||
-    location.hash === '#sec-agentic-strategies' ||
-    location.hash === '#sec-agentic-positions' ||
-    location.hash === '#sec-agentic-trades' ||
-    location.hash === '#sec-agentic-diagnostics'
+    location.hash === '#sec-agentic-env'
   ) {
     initial = 'agentic';
   }
@@ -589,12 +584,7 @@ function initDeskTabs() {
     if (
       location.hash === '#sec-agentic-runtime' ||
       location.hash === '#sec-agentic-process' ||
-      location.hash === '#sec-agentic-env' ||
-      location.hash === '#sec-agentic-safety' ||
-      location.hash === '#sec-agentic-strategies' ||
-      location.hash === '#sec-agentic-positions' ||
-      location.hash === '#sec-agentic-trades' ||
-      location.hash === '#sec-agentic-diagnostics'
+      location.hash === '#sec-agentic-env'
     ) {
       setDeskTab('agentic');
     }
@@ -2517,16 +2507,6 @@ function asPrettyJson(v) {
   }
 }
 
-function parseOptionalPositiveNumber(inputId) {
-  const raw = String(document.getElementById(inputId)?.value || '').trim();
-  if (!raw) return undefined;
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n <= 0) {
-    throw new Error(`Invalid value for ${inputId}`);
-  }
-  return n;
-}
-
 async function refreshAgenticProcessStatus(opts = {}) {
   const line = document.getElementById('agentic-process-line');
   const out = document.getElementById('agentic-process-out');
@@ -2551,71 +2531,15 @@ async function refreshAgenticProcessStatus(opts = {}) {
 async function refreshAgenticTrading(opts = {}) {
   const healthLine = document.getElementById('agentic-health-line');
   const healthOut = document.getElementById('agentic-health-out');
-  const safetyLine = document.getElementById('agentic-safety-line');
-  const safetyOut = document.getElementById('agentic-safety-out');
-  const strategiesBody = document.getElementById('agentic-strategies-body');
-  const positionsOut = document.getElementById('agentic-positions-out');
-  const tradesOut = document.getElementById('agentic-trades-out');
-  const ticksOut = document.getElementById('agentic-ticks-out');
   if (!healthOut) return;
   await refreshAgenticProcessStatus(opts);
   try {
-    const [health, killSwitch, caps, strategies, positions, trades, ticks] = await Promise.all([
-      readJson('/api/twilight-bot/healthz'),
-      readJson('/api/twilight-bot/kill-switch'),
-      readJson('/api/twilight-bot/caps'),
-      readJson('/api/twilight-bot/strategies?profitable=true&limit=20'),
-      readJson('/api/twilight-bot/positions'),
-      readJson('/api/twilight-bot/trades?limit=20'),
-      readJson('/api/twilight-bot/ticks?limit=30'),
-    ]);
+    const health = await readJson('/api/twilight-bot/healthz');
     if (healthLine) {
       const up = health?.uptime_s ?? health?.uptime ?? health?.uptime_sec;
       healthLine.textContent = `Connected · uptime: ${up != null ? up : 'n/a'} · status: ${health?.status || 'ok'}`;
     }
     healthOut.textContent = asPrettyJson(health);
-    if (safetyLine) {
-      const on = killSwitch?.on === true ? 'ON' : 'OFF';
-      safetyLine.textContent = `Kill switch: ${on}`;
-    }
-    safetyOut.textContent = asPrettyJson({ killSwitch, caps });
-    if (document.getElementById('agentic-cap-notional')) {
-      document.getElementById('agentic-cap-notional').value =
-        caps?.max_notional_usd ?? caps?.max_notional_usd_per_intent ?? '';
-    }
-    if (document.getElementById('agentic-cap-leverage')) {
-      document.getElementById('agentic-cap-leverage').value = caps?.max_leverage ?? '';
-    }
-    if (document.getElementById('agentic-cap-daily-loss')) {
-      document.getElementById('agentic-cap-daily-loss').value = caps?.daily_loss_stop_usd ?? '';
-    }
-
-    if (strategiesBody) {
-      const rows = Array.isArray(strategies?.strategies)
-        ? strategies.strategies
-        : Array.isArray(strategies)
-          ? strategies
-          : [];
-      strategiesBody.innerHTML = rows
-        .slice(0, 20)
-        .map((s) => {
-          const apy = s?.apy ?? s?.annualizedApy ?? s?.annualized_apy;
-          return `<tr>
-            <td>${escapeHtml(String(s?.id ?? '—'))}</td>
-            <td>${escapeHtml(s?.name || '')}</td>
-            <td>${escapeHtml(s?.category || '')}</td>
-            <td>${escapeHtml(s?.risk || '')}</td>
-            <td>${apy != null ? escapeHtml(String(apy)) : '—'}</td>
-          </tr>`;
-        })
-        .join('');
-      if (!rows.length) {
-        strategiesBody.innerHTML = '<tr><td colspan="5">No strategies returned.</td></tr>';
-      }
-    }
-    if (positionsOut) positionsOut.textContent = asPrettyJson(positions);
-    if (tradesOut) tradesOut.textContent = asPrettyJson(trades);
-    if (ticksOut) ticksOut.textContent = asPrettyJson(ticks);
   } catch (e) {
     if (!shouldSurfaceFetchError(e, opts)) return;
     const m = errMsg(e);
@@ -2632,35 +2556,8 @@ function getEnvValue(entries, key) {
 
 async function refreshAgenticEnv() {
   const msg = document.getElementById('agentic-env-msg');
-  const baseEl = document.getElementById('agentic-env-base-url');
-  const tokenEl = document.getElementById('agentic-env-api-token');
-  const timeoutEl = document.getElementById('agentic-env-timeout-ms');
-  const repoEl = document.getElementById('agentic-env-repo-dir');
-  const spawnEl = document.getElementById('agentic-env-spawn');
-  const allowEl = document.getElementById('agentic-env-allow-spawn');
-  const gitUrlEl = document.getElementById('agentic-env-git-url');
-  const allowCloneEl = document.getElementById('agentic-env-allow-clone');
-  if (!baseEl || !tokenEl || !timeoutEl) return;
+  if (!msg) return;
   try {
-    const data = await readJson('/api/env');
-    const entries = data.entries || [];
-    baseEl.value = getEnvValue(entries, 'TWILIGHT_BOT_BASE_URL') || 'http://127.0.0.1:8787';
-    timeoutEl.value = getEnvValue(entries, 'TWILIGHT_BOT_TIMEOUT_MS') || '15000';
-    tokenEl.value = '';
-    if (repoEl) repoEl.value = getEnvValue(entries, 'TWILIGHT_BOT_REPO_DIR');
-    if (spawnEl) spawnEl.value = getEnvValue(entries, 'TWILIGHT_BOT_SPAWN') || '';
-    if (allowEl) {
-      const v = String(getEnvValue(entries, 'TWILIGHT_BOT_ALLOW_DASHBOARD_SPAWN') || '').trim().toUpperCase();
-      allowEl.checked = v === 'YES';
-    }
-    if (gitUrlEl) {
-      gitUrlEl.value =
-        getEnvValue(entries, 'TWILIGHT_BOT_GIT_URL') || 'https://github.com/runnerelectrode/twilight-bot.git';
-    }
-    if (allowCloneEl) {
-      const c = String(getEnvValue(entries, 'TWILIGHT_BOT_ALLOW_DASHBOARD_CLONE') || '').trim().toUpperCase();
-      allowCloneEl.checked = c === 'YES';
-    }
     if (msg) {
       msg.textContent = '';
       msg.classList.remove('hint-error');
@@ -2674,106 +2571,21 @@ async function refreshAgenticEnv() {
   }
 }
 
-async function saveAgenticEnv() {
-  const msg = document.getElementById('agentic-env-msg');
-  const baseEl = document.getElementById('agentic-env-base-url');
-  const tokenEl = document.getElementById('agentic-env-api-token');
-  const timeoutEl = document.getElementById('agentic-env-timeout-ms');
-  const repoEl = document.getElementById('agentic-env-repo-dir');
-  const spawnEl = document.getElementById('agentic-env-spawn');
-  const allowEl = document.getElementById('agentic-env-allow-spawn');
-  const gitUrlEl = document.getElementById('agentic-env-git-url');
-  const allowCloneEl = document.getElementById('agentic-env-allow-clone');
-  if (!baseEl || !tokenEl || !timeoutEl) return;
-  const updates = {
-    TWILIGHT_BOT_BASE_URL: String(baseEl.value || '').trim(),
-    TWILIGHT_BOT_TIMEOUT_MS: String(timeoutEl.value || '').trim(),
-  };
-  const token = String(tokenEl.value || '').trim();
-  if (token) updates.TWILIGHT_BOT_API_TOKEN = token;
-  const repo = String(repoEl?.value || '').trim();
-  updates.TWILIGHT_BOT_REPO_DIR = repo;
-  const spawn = String(spawnEl?.value || '').trim();
-  updates.TWILIGHT_BOT_SPAWN = spawn;
-  updates.TWILIGHT_BOT_ALLOW_DASHBOARD_SPAWN = allowEl?.checked === true ? 'YES' : '';
-  const gitUrl = String(gitUrlEl?.value || '').trim();
-  updates.TWILIGHT_BOT_GIT_URL = gitUrl;
-  updates.TWILIGHT_BOT_ALLOW_DASHBOARD_CLONE = allowCloneEl?.checked === true ? 'YES' : '';
+// No Agentic env save action (spin-up writes required defaults).
+
+async function spinUpAgentic() {
   try {
-    await readJson('/api/env', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ updates }),
-    });
-    await readJson('/api/env/reload', { method: 'POST' });
-    if (msg) {
-      msg.textContent = 'Saved to main .env and reloaded.';
-      msg.classList.remove('hint-error');
-    }
-    tokenEl.value = '';
+    const r = await readJson('/api/twilight-bot/spin-up', { method: 'POST' });
+    const stepSummary =
+      Array.isArray(r.steps) && r.steps.length
+        ? `\n${r.steps.map((s) => `${s.step}: ${s.ok ? 'ok' : 'fail'}`).join('\n')}`
+        : '';
+    showDashboardSuccess(`Spin up complete (pid ${r.pid ?? '—'}).${stepSummary}`, 'Twilight-bot');
     await refreshAgenticEnv();
-    await refreshAgenticTrading({ userAction: true });
-  } catch (e) {
-    const m = errMsg(e);
-    if (msg) {
-      msg.textContent = m;
-      msg.classList.add('hint-error');
-    }
-    showDashboardError(m, 'Agentic .env');
-  }
-}
-
-async function setAgenticKillSwitch(on) {
-  const out = document.getElementById('agentic-safety-out');
-  try {
-    const r = await readJson('/api/twilight-bot/kill-switch', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ on: !!on }),
-    });
-    if (out) out.textContent = asPrettyJson(r);
-    await refreshAgenticTrading({ userAction: true });
-  } catch (e) {
-    showDashboardError(errMsg(e), 'Agentic kill switch');
-  }
-}
-
-async function cloneAgenticRepo() {
-  try {
-    const gitUrl = document.getElementById('agentic-env-git-url')?.value?.trim();
-    const destDir = document.getElementById('agentic-env-repo-dir')?.value?.trim();
-    const body = {};
-    if (gitUrl) body.gitUrl = gitUrl;
-    if (destDir) body.destDir = destDir;
-    const r = await readJson('/api/twilight-bot/repo/clone', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    showDashboardSuccess(String(r?.message || 'Clone finished.'), 'Twilight-bot');
-    await refreshAgenticEnv();
-    await refreshAgenticProcessStatus({ userAction: false });
-  } catch (e) {
-    showDashboardError(errMsg(e), 'Clone twilight-bot');
-  }
-}
-
-async function startAgenticProcess() {
-  try {
-    const repo = document.getElementById('agentic-env-repo-dir')?.value?.trim();
-    const cmd = document.getElementById('agentic-env-spawn')?.value?.trim();
-    const body = {};
-    if (repo) body.repoDir = repo;
-    if (cmd) body.command = cmd;
-    await readJson('/api/twilight-bot/process/start', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
     await refreshAgenticProcessStatus({ userAction: true });
     await refreshAgenticTrading({ userAction: false });
   } catch (e) {
-    showDashboardError(errMsg(e), 'Start twilight-bot');
+    showDashboardError(errMsg(e), 'Spin up twilight-bot');
   }
 }
 
@@ -2783,30 +2595,6 @@ async function stopAgenticProcess() {
     await refreshAgenticProcessStatus({ userAction: true });
   } catch (e) {
     showDashboardError(errMsg(e), 'Stop twilight-bot');
-  }
-}
-
-async function saveAgenticCaps() {
-  try {
-    const max_notional_usd = parseOptionalPositiveNumber('agentic-cap-notional');
-    const max_leverage = parseOptionalPositiveNumber('agentic-cap-leverage');
-    const daily_loss_stop_usd = parseOptionalPositiveNumber('agentic-cap-daily-loss');
-    const confirmLive = document.getElementById('agentic-cap-confirm-live')?.checked === true;
-    const body = {};
-    if (max_notional_usd != null) body.max_notional_usd = max_notional_usd;
-    if (max_leverage != null) body.max_leverage = max_leverage;
-    if (daily_loss_stop_usd != null) body.daily_loss_stop_usd = daily_loss_stop_usd;
-    if (confirmLive) body.confirm_live = true;
-    const r = await readJson('/api/twilight-bot/caps', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    const out = document.getElementById('agentic-safety-out');
-    if (out) out.textContent = asPrettyJson(r);
-    await refreshAgenticTrading({ userAction: true });
-  } catch (e) {
-    showDashboardError(errMsg(e), 'Agentic caps');
   }
 }
 
@@ -3337,21 +3125,7 @@ async function refreshEnv() {
       msg.textContent = '';
       msg.classList.remove('hint-error');
     }
-    const st = data.stats || {};
-    const unsetKeys = st.unsetKeys || [];
-    const unsetPreview =
-      unsetKeys.length === 0
-        ? '<span class="muted">none</span>'
-        : unsetKeys.length <= 14
-          ? unsetKeys.map((k) => escapeHtml(k)).join(', ')
-          : `${unsetKeys
-              .slice(0, 14)
-              .map((k) => escapeHtml(k))
-              .join(', ')} <span class="muted">…and ${unsetKeys.length - 14} more</span>`;
-    const summaryLine =
-      st.total != null
-        ? `<div class="env-summary-bar"><p class="env-summary-line"><strong>${st.set ?? 0}</strong> of <strong>${st.total}</strong> listed variables have a value in <code>.env</code>. <strong>${st.unset ?? unsetKeys.length}</strong> still empty: ${unsetPreview}</p></div>`
-        : '';
+    // Intentionally omit the "X of Y variables set" summary bar.
     const pm = data.presetMeta || {};
     const src = pm.sourceBlurb ? `<p class="muted small env-preset-source">${escapeHtml(pm.sourceBlurb)}</p>` : '';
     const testnetNote = pm.notes?.testnet
@@ -3372,7 +3146,7 @@ async function refreshEnv() {
       byGroup[e.group] = byGroup[e.group] || [];
       byGroup[e.group].push(e);
     }
-    let html = summaryLine + presetBlock;
+    let html = presetBlock;
     for (const g of groups) {
       const rows = byGroup[g.id] || [];
       if (!rows.length) continue;
@@ -4450,37 +4224,9 @@ document.getElementById('btn-relayer-import')?.addEventListener('click', () => {
 document.getElementById('btn-agentic-refresh-health')?.addEventListener('click', () => {
   refreshAgenticTrading({ userAction: true });
 });
-document.getElementById('btn-agentic-refresh-safety')?.addEventListener('click', () => {
-  refreshAgenticTrading({ userAction: true });
-});
-document.getElementById('btn-agentic-refresh-strategies')?.addEventListener('click', () => {
-  refreshAgenticTrading({ userAction: true });
-});
-document.getElementById('btn-agentic-refresh-positions')?.addEventListener('click', () => {
-  refreshAgenticTrading({ userAction: true });
-});
-document.getElementById('btn-agentic-refresh-trades')?.addEventListener('click', () => {
-  refreshAgenticTrading({ userAction: true });
-});
-document.getElementById('btn-agentic-refresh-ticks')?.addEventListener('click', () => {
-  refreshAgenticTrading({ userAction: true });
-});
-document.getElementById('btn-agentic-kill-on')?.addEventListener('click', () => setAgenticKillSwitch(true));
-document.getElementById('btn-agentic-kill-off')?.addEventListener('click', () => setAgenticKillSwitch(false));
-document.getElementById('btn-agentic-save-caps')?.addEventListener('click', () => {
-  saveAgenticCaps();
-});
-document.getElementById('btn-agentic-env-save')?.addEventListener('click', () => {
-  saveAgenticEnv();
-});
-document.getElementById('btn-agentic-env-reload')?.addEventListener('click', () => {
-  refreshAgenticEnv();
-});
-document.getElementById('btn-agentic-repo-clone')?.addEventListener('click', () => {
-  cloneAgenticRepo();
-});
-document.getElementById('btn-agentic-process-start')?.addEventListener('click', () => {
-  startAgenticProcess();
+// Agentic required setup has no inputs; messages only.
+document.getElementById('btn-agentic-spin-up')?.addEventListener('click', () => {
+  spinUpAgentic();
 });
 document.getElementById('btn-agentic-process-stop')?.addEventListener('click', () => {
   stopAgenticProcess();

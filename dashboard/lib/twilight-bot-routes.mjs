@@ -6,6 +6,7 @@ import {
   stopTwilightBot,
 } from './twilight-bot-process.mjs';
 import { cloneTwilightBotRepo } from './twilight-bot-repo.mjs';
+import { spinUpTwilightBot } from './twilight-bot-spinup.mjs';
 
 function sanitizeBaseUrl(raw) {
   const input = String(raw || '').trim() || 'http://127.0.0.1:8787';
@@ -102,6 +103,12 @@ export function registerTwilightBotRoutes(app, { requireToken }) {
     });
     if (!out.ok) return res.status(400).json(out);
     res.json(out);
+  });
+
+  app.post('/api/twilight-bot/spin-up', requireToken, (_req, res) => {
+    const out = spinUpTwilightBot();
+    if (!out.ok) return res.status(400).json(out);
+    res.json({ ...out, status: getTwilightBotProcessStatus() });
   });
 
   app.get('/api/twilight-bot/healthz', requireToken, async (req, res) => {
