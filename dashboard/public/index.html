@@ -1365,12 +1365,12 @@
           <p class="hint small" id="agentic-runtime-line">Loading…</p>
           <div class="field-grid">
             <label class="field wide">
-              <span>Send command to running bot stdin</span>
+              <span>Run bot command (dashboard interpreter)</span>
               <input
                 type="text"
                 id="agentic-process-command"
                 autocomplete="off"
-                placeholder="e.g. status, help, or a runtime command"
+                placeholder="e.g. help, status, strategies profitable=true limit=10"
               />
             </label>
           </div>
@@ -1387,8 +1387,8 @@
           <pre class="out out-compact" id="agentic-process-command-out">—</pre>
           <h3 class="subhead">Terminal commands</h3>
           <p class="hint small">
-            Copy/paste into terminal. The first block is stdin commands (when the process is attached); the second block
-            is HTTP control commands that work against any live bot API.
+            Copy/paste into terminal. First block mirrors dashboard command syntax (via HTTP interpreter). Second block is
+            direct `curl` control against a live bot API.
           </p>
           <pre class="out out-compact" id="agentic-terminal-stdin-cmds">help
 status

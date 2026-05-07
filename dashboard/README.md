@@ -81,7 +81,7 @@ git submodule update --init --depth 1 external/twilight-bot
 
 **One-click spin up** (Agentic tab → **Spin up twilight-bot**): runs `git submodule update --init`, `npm install`, `npm run build`, and `npm start` in that directory. Set `TWILIGHT_BOT_ALLOW_DASHBOARD_SPAWN=YES` in `.env` first. Leave `TWILIGHT_BOT_REPO_DIR` empty to use the default submodule path (or set it explicitly). The child process inherits the repo `.env` (Strategy API keys, etc.).
 
-When started by the dashboard, the **Send command** box writes to the bot stdin. Supported runtime commands include:
+The Agentic **Run command** box uses a dashboard-side interpreter that maps commands to twilight-bot HTTP endpoints (`/healthz`, `/strategies`, `/positions`, `/trades`, `/ticks`, `/kill-switch`, `/caps`). Supported commands include:
 
 - `help`
 - `status` / `health`
@@ -91,8 +91,9 @@ When started by the dashboard, the **Send command** box writes to the bot stdin.
 - `ticks skill=funding-arb status=noop limit=100`
 - `kill on` / `kill off`
 - `caps`
+- `stdin <raw command>` (optional passthrough to `/api/twilight-bot/process/command` when you explicitly need process stdin)
 
-Terminal fallback (works even if the process is not attached to dashboard stdin): call bot HTTP endpoints directly, e.g. `curl 'http://127.0.0.1:8787/strategies?profitable=true&limit=10'`.
+Terminal fallback: call bot HTTP endpoints directly, e.g. `curl 'http://127.0.0.1:8787/strategies?profitable=true&limit=10'`.
 
 | Fallback | When to use |
 |----------|-------------|

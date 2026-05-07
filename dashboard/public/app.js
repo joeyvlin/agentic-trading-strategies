@@ -3138,19 +3138,109 @@ async function stopAgenticProcess() {
 async function sendAgenticProcessCommand(opts = {}) {
   const input = document.getElementById('agentic-process-command');
   const out = document.getElementById('agentic-process-command-out');
-  const command = input?.value?.trim() ?? '';
-  if (!command) {
+  const commandLine = input?.value?.trim() ?? '';
+  if (!commandLine) {
     if (out) out.textContent = 'Enter a command first.';
-    if (opts.userAction) showDashboardError('Enter a command first.', 'Twilight-bot stdin');
+    if (opts.userAction) showDashboardError('Enter a command first.', 'Twilight-bot command');
     return;
   }
   if (out) out.textContent = 'Sending…';
   try {
-    const data = await readJson('/api/twilight-bot/process/command', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command }),
-    });
+    const pieces = commandLine.split(/\s+/).filter(Boolean);
+    const cmd = String(pieces[0] || '').toLowerCase();
+    const args = [];
+    const optsMap = {};
+    for (const token of pieces.slice(1)) {
+      if (token.includes('=')) {
+        const i = token.indexOf('=');
+        const key = token.slice(0, i).replace(/^--/, '');
+        const val = token.slice(i + 1);
+        if (key) optsMap[key] = val;
+      } else if (token.startsWith('--')) {
+        const key = token.replace(/^--/, '');
+        if (key) optsMap[key] = 'true';
+      } else {
+        args.push(token);
+      }
+    }
+
+    let data;
+    if (cmd === 'help') {
+      data = {
+        ok: true,
+        commands: [
+          'help',
+          'status | health',
+          'strategies profitable=true limit=10 venue=binance,bybit',
+          'positions venue=twilight,binance,bybit',
+          'trades limit=25 q=funding',
+          'ticks skill=funding-arb status=noop limit=100',
+          'kill on | kill off',
+          'caps',
+          'stdin <raw command>  # optional passthrough to process stdin',
+        ],
+      };
+    } else if (cmd === 'status' || cmd === 'health') {
+      data = await readJson('/api/twilight-bot/healthz');
+    } else if (cmd === 'caps') {
+      data = await readJson('/api/twilight-bot/caps');
+    } else if (cmd === 'kill') {
+      const v = String(args[0] || optsMap.on || '').toLowerCase();
+      if (!['on', 'off', 'true', 'false', '1', '0'].includes(v)) {
+        throw new Error('usage: kill on|off');
+      }
+      const on = v === 'on' || v === 'true' || v === '1';
+      data = await botPut('/api/twilight-bot/kill-switch', { on });
+    } else if (cmd === 'strategies') {
+      const qs = new URLSearchParams();
+      if (optsMap.profitable) qs.set('profitable', String(optsMap.profitable).toLowerCase() === 'true' ? 'true' : 'false');
+      if (optsMap.limit) qs.set('limit', String(optsMap.limit));
+      if (optsMap.risk) qs.set('risk', String(optsMap.risk));
+      if (optsMap.category) qs.set('category', String(optsMap.category));
+      if (optsMap.minApy) qs.set('minApy', String(optsMap.minApy));
+      const raw = await readJson(`/api/twilight-bot/strategies${qs.size ? `?${qs.toString()}` : ''}`);
+      const venueCsv = String(optsMap.venue || '').trim().toLowerCase();
+      if (!venueCsv || !Array.isArray(raw?.strategies)) {
+        data = raw;
+      } else {
+        const venues = venueCsv.split(',').map((x) => x.trim()).filter(Boolean);
+        const filtered = raw.strategies.filter((s) => venues.some((v) => botStrategyHasVenue(s, v)));
+        data = { ...raw, count: filtered.length, _filter: { venueAnyOf: venues }, strategies: filtered };
+      }
+    } else if (cmd === 'positions') {
+      const raw = await readJson('/api/twilight-bot/positions');
+      const venueCsv = String(optsMap.venue || '').trim().toLowerCase();
+      if (!venueCsv || !Array.isArray(raw)) {
+        data = raw;
+      } else {
+        const venues = venueCsv.split(',').map((x) => x.trim()).filter(Boolean);
+        data = raw.filter((p) => venues.includes(String(p?.venue || '').toLowerCase()));
+      }
+    } else if (cmd === 'trades') {
+      const qs = new URLSearchParams();
+      if (optsMap.q) qs.set('q', String(optsMap.q));
+      if (optsMap.limit) qs.set('limit', String(optsMap.limit));
+      if (optsMap.since) qs.set('since', String(optsMap.since));
+      data = await readJson(`/api/twilight-bot/trades${qs.size ? `?${qs.toString()}` : ''}`);
+    } else if (cmd === 'ticks') {
+      const qs = new URLSearchParams();
+      if (optsMap.skill) qs.set('skill', String(optsMap.skill));
+      if (optsMap.status) qs.set('status', String(optsMap.status));
+      if (optsMap.limit) qs.set('limit', String(optsMap.limit));
+      if (optsMap.since) qs.set('since', String(optsMap.since));
+      data = await readJson(`/api/twilight-bot/ticks${qs.size ? `?${qs.toString()}` : ''}`);
+    } else if (cmd === 'stdin') {
+      const raw = String(commandLine.slice(commandLine.indexOf(' ') + 1) || '').trim();
+      if (!raw) throw new Error('usage: stdin <raw command>');
+      data = await readJson('/api/twilight-bot/process/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: raw }),
+      });
+    } else {
+      throw new Error(`Unknown command "${cmd}". Try "help".`);
+    }
+
     if (out) out.textContent = asPrettyJson(data);
     if (input) input.value = '';
     await refreshAgenticProcessStatus({ userAction: false });
@@ -3158,7 +3248,7 @@ async function sendAgenticProcessCommand(opts = {}) {
   } catch (e) {
     const m = errMsg(e);
     if (out) out.textContent = m;
-    if (opts.userAction) showDashboardError(m, 'Send command to twilight-bot');
+    if (opts.userAction) showDashboardError(m, 'Run twilight-bot command');
   }
 }
 
@@ -4817,9 +4907,9 @@ document.getElementById('btn-agentic-process-status')?.addEventListener('click',
 });
 document.getElementById('btn-agentic-process-command-send')?.addEventListener('click', async () => {
   const ok = await openAgenticConfirmModal({
-    title: 'Send runtime command?',
-    message: 'This sends the command to the running twilight-bot stdin.',
-    confirmText: 'Send command',
+    title: 'Run bot command?',
+    message: 'This runs the dashboard command interpreter against twilight-bot APIs.',
+    confirmText: 'Run command',
     confirmClass: 'btn primary',
   });
   if (!ok) return;
@@ -4829,9 +4919,9 @@ document.getElementById('agentic-process-command')?.addEventListener('keydown', 
   if (ev.key !== 'Enter') return;
   ev.preventDefault();
   const ok = await openAgenticConfirmModal({
-    title: 'Send runtime command?',
-    message: 'This sends the command to the running twilight-bot stdin.',
-    confirmText: 'Send command',
+    title: 'Run bot command?',
+    message: 'This runs the dashboard command interpreter against twilight-bot APIs.',
+    confirmText: 'Run command',
     confirmClass: 'btn primary',
   });
   if (!ok) return;
