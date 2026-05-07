@@ -2715,6 +2715,7 @@ function readNumOrDefault(id, def) {
 const TWILIGHT_BOT_PARAM_DEFAULTS = {
   PAPER: '1',
   LIVE_TRADING_CONFIRMED: 'NO',
+  CLAUDE_CONSULT_DISABLED: '0',
   MAX_OPEN_POSITIONS: '1',
   MAX_NOTIONAL_USD_PER_INTENT: '200',
   MAX_LEVERAGE: '5',
@@ -2725,6 +2726,8 @@ const TWILIGHT_BOT_PARAM_DEFAULTS = {
 const TWILIGHT_BOT_PARAM_KEYS = [
   'PAPER',
   'LIVE_TRADING_CONFIRMED',
+  'CLAUDE_CONSULT_DISABLED',
+  'CLAUDE_CLI_PATH',
   'MAX_OPEN_POSITIONS',
   'MAX_NOTIONAL_USD_PER_INTENT',
   'MAX_LEVERAGE',
@@ -2755,6 +2758,44 @@ function tbParamInput(key) {
 
 function tbParamStatusEl(key) {
   return document.getElementById(`tb-param-status-${key}`);
+}
+
+function updateTwilightBotLiveReadiness() {
+  const out = document.getElementById('tb-live-readiness-out');
+  if (!out) return;
+  const paper = String(tbParamInput('PAPER')?.value || '').trim();
+  const liveConfirmed = String(tbParamInput('LIVE_TRADING_CONFIRMED')?.value || '').trim().toUpperCase();
+  const consultDisabled = String(tbParamInput('CLAUDE_CONSULT_DISABLED')?.value || '').trim();
+  const claudePath = String(tbParamInput('CLAUDE_CLI_PATH')?.value || '').trim();
+
+  const mode = paper === '0' ? 'live' : 'paper';
+  const consultOn = consultDisabled !== '1';
+  const checks = [];
+  let level = 'ok';
+  if (mode === 'live') {
+    if (liveConfirmed === 'YES') {
+      checks.push('OK: LIVE_TRADING_CONFIRMED=YES');
+    } else {
+      checks.push('BLOCKER: set LIVE_TRADING_CONFIRMED=YES');
+      level = 'blocker';
+    }
+    if (consultOn) {
+      checks.push('INFO: Claude consult is ON (requires `claude auth login` on host).');
+      checks.push(claudePath ? `INFO: CLAUDE_CLI_PATH set (${claudePath})` : 'INFO: CLAUDE_CLI_PATH not set (auto-discovery).');
+    } else {
+      checks.push('WARN: Claude consult is OFF (CLAUDE_CONSULT_DISABLED=1).');
+      if (level !== 'blocker') level = 'warn';
+    }
+  } else {
+    checks.push('INFO: PAPER mode enabled; live confirmations are not required.');
+    level = 'warn';
+  }
+  out.classList.remove('tb-live-readiness-ok', 'tb-live-readiness-warn', 'tb-live-readiness-blocker');
+  if (level === 'blocker') out.classList.add('tb-live-readiness-blocker');
+  else if (level === 'warn') out.classList.add('tb-live-readiness-warn');
+  else out.classList.add('tb-live-readiness-ok');
+  const banner = level === 'blocker' ? 'BLOCKER' : level === 'warn' ? 'WARNING' : 'READY';
+  out.textContent = [`${banner} · Mode: ${mode.toUpperCase()}`, ...checks].join('\n');
 }
 
 function getTwilightBotAutoFillValues() {
@@ -2809,6 +2850,7 @@ function fillTwilightBotParamInputs(entries = [], { preferDashboard = false } = 
     const next = preferDashboard ? autoVal || envVal || defVal : envVal || autoVal || defVal;
     if (typeof next === 'string') el.value = next;
   }
+  updateTwilightBotLiveReadiness();
 }
 
 async function refreshTwilightBotParams() {
@@ -2818,6 +2860,7 @@ async function refreshTwilightBotParams() {
     twilightBotParamRows = data.entries || [];
     fillTwilightBotParamInputs(twilightBotParamRows, { preferDashboard: false });
     refreshTwilightBotSecretIndicators();
+    updateTwilightBotLiveReadiness();
     if (msg) {
       msg.textContent = 'Saved to repo .env (used by twilight-bot process).';
       msg.classList.remove('hint-error');
@@ -2849,6 +2892,7 @@ async function autofillTwilightBotParamsFromDashboard() {
       }
     }
     refreshTwilightBotSecretIndicators();
+    updateTwilightBotLiveReadiness();
     if (msg) {
       msg.textContent = 'Autofilled from wallet/session/CEX key store and current .env.';
       msg.classList.remove('hint-error');
@@ -2893,6 +2937,7 @@ async function saveTwilightBotParams() {
     }
     await refreshTwilightBotParams();
     await refreshEnv();
+    updateTwilightBotLiveReadiness();
   } catch (e) {
     const m = errMsg(e);
     if (msg) {
@@ -5014,9 +5059,29 @@ document.getElementById('btn-agentic-bot-caps')?.addEventListener('click', async
 document.getElementById('btn-tb-params-autofill')?.addEventListener('click', () => {
   autofillTwilightBotParamsFromDashboard();
 });
+document.getElementById('btn-tb-live-preset')?.addEventListener('click', () => {
+  const paper = tbParamInput('PAPER');
+  const live = tbParamInput('LIVE_TRADING_CONFIRMED');
+  if (paper) paper.value = '0';
+  if (live) live.value = 'YES';
+  updateTwilightBotLiveReadiness();
+});
+document.getElementById('btn-tb-consult-on')?.addEventListener('click', () => {
+  const el = tbParamInput('CLAUDE_CONSULT_DISABLED');
+  if (el) el.value = '0';
+  updateTwilightBotLiveReadiness();
+});
+document.getElementById('btn-tb-consult-off')?.addEventListener('click', () => {
+  const el = tbParamInput('CLAUDE_CONSULT_DISABLED');
+  if (el) el.value = '1';
+  updateTwilightBotLiveReadiness();
+});
 document.getElementById('btn-tb-params-save')?.addEventListener('click', () => {
   saveTwilightBotParams();
 });
+for (const key of ['PAPER', 'LIVE_TRADING_CONFIRMED', 'CLAUDE_CONSULT_DISABLED', 'CLAUDE_CLI_PATH']) {
+  tbParamInput(key)?.addEventListener('input', () => updateTwilightBotLiveReadiness());
+}
 
 const walletSessionModeEl = document.getElementById('wallet-session-mode');
 if (walletSessionModeEl) walletSessionModeEl.value = getPersistedWalletSessionMode();

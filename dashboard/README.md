@@ -95,6 +95,12 @@ The Agentic **Run command** box uses a dashboard-side interpreter that maps comm
 
 Terminal fallback: call bot HTTP endpoints directly, e.g. `curl 'http://127.0.0.1:8787/strategies?profitable=true&limit=10'`.
 
+For non-paper flow, the Agentic **Required parameters** panel now includes live-mode helpers:
+- one-click presets for `PAPER=0` + `LIVE_TRADING_CONFIRMED=YES`
+- consult toggle via `CLAUDE_CONSULT_DISABLED` (ON/OFF)
+- optional `CLAUDE_CLI_PATH`
+- a readiness block that explains whether live startup is blocked and whether Claude auth is required (`claude auth login`)
+
 | Fallback | When to use |
 |----------|-------------|
 | **Manual clone** | Point `TWILIGHT_BOT_REPO_DIR` at any checkout. |

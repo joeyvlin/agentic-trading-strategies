@@ -1131,6 +1131,14 @@
                 <input type="text" id="tb-param-LIVE_TRADING_CONFIRMED" autocomplete="off" />
               </label>
               <label class="field">
+                <span><code>CLAUDE_CONSULT_DISABLED</code> (0/1)</span>
+                <input type="text" id="tb-param-CLAUDE_CONSULT_DISABLED" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span><code>CLAUDE_CLI_PATH</code> (optional)</span>
+                <input type="text" id="tb-param-CLAUDE_CLI_PATH" autocomplete="off" placeholder="/usr/bin/claude" />
+              </label>
+              <label class="field">
                 <span><code>MAX_OPEN_POSITIONS</code></span>
                 <input type="text" id="tb-param-MAX_OPEN_POSITIONS" inputmode="numeric" autocomplete="off" />
               </label>
@@ -1181,8 +1189,12 @@
             </div>
             <div class="btn-row">
               <button type="button" class="btn" id="btn-tb-params-autofill">Autofill from dashboard</button>
+              <button type="button" class="btn small" id="btn-tb-live-preset">Set live mode preset</button>
+              <button type="button" class="btn small" id="btn-tb-consult-on">Consult ON</button>
+              <button type="button" class="btn small" id="btn-tb-consult-off">Consult OFF</button>
               <button type="button" class="btn primary" id="btn-tb-params-save">Save bot params</button>
             </div>
+            <pre class="out out-compact" id="tb-live-readiness-out">Checking live-mode readiness…</pre>
             <p class="hint small" id="tb-params-msg">Saved to repo <code>.env</code> (used by twilight-bot process).</p>
           </details>
 
@@ -1408,6 +1420,8 @@ curl 'http://127.0.0.1:8787/ticks?skill=funding-arb&amp;status=noop&amp;limit=50
 curl -X PUT 'http://127.0.0.1:8787/kill-switch' -H 'content-type: application/json' -d '{"on":true}'
 curl -X PUT 'http://127.0.0.1:8787/kill-switch' -H 'content-type: application/json' -d '{"on":false}'</pre>
           <pre class="out out-compact" id="agentic-terminal-start-cmd">cd external/twilight-bot &amp;&amp; npm install &amp;&amp; npm run build &amp;&amp; npm start</pre>
+          <pre class="out out-compact" id="agentic-terminal-claude-auth-cmd"># required for live mode when consult is ON
+claude auth login</pre>
           <h3 class="subhead">Recent bot output</h3>
           <p class="hint small">Live stdout/stderr/stdin from the process spawned by this dashboard.</p>
           <pre class="out out-compact" id="agentic-process-logs-out">Loading…</pre>
