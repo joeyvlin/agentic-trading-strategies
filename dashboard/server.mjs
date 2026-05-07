@@ -16,6 +16,7 @@ import { registerRelayerRoutes } from './lib/relayer-routes.mjs';
 import { sanitizeString } from './lib/relayer-cli.mjs';
 import { getRepoRoot } from './lib/persistence.mjs';
 import { registerTwilightBotRoutes } from './lib/twilight-bot-routes.mjs';
+import { runTwilightBotApyAutoClosePass } from './lib/twilight-bot-auto-close.mjs';
 
 /** Load repo `.env` before anything reads `process.env` (e.g. TWILIGHT_RELAYER_CLI). */
 loadEnv();
@@ -29,7 +30,6 @@ const app = express();
 const PORT = Number(process.env.DASHBOARD_PORT) || 3847;
 /** Unset = Node default bind (all interfaces; avoids IPv6 `localhost` vs `127.0.0.1` mismatches). */
 const HOST = process.env.DASHBOARD_HOST?.trim() || '';
-const TOKEN = process.env.DASHBOARD_TOKEN || '';
 
 app.use(
   cors({
@@ -40,11 +40,7 @@ app.use(
 app.use(express.json({ limit: '2mb' }));
 
 function requireToken(req, res, next) {
-  if (!TOKEN) return next();
-  const h = req.headers['x-dashboard-token'];
-  if (h !== TOKEN) {
-    return res.status(401).json({ error: 'Invalid or missing x-dashboard-token header' });
-  }
+  // Dashboard token auth was removed; keep middleware shape for route registration reuse.
   next();
 }
 
@@ -295,13 +291,10 @@ registerTwilightBotRoutes(app, { requireToken });
 app.use(express.static(path.join(__dirname, 'public')));
 
 const onListen = () => {
-  const tokenNote = TOKEN ? 'token: required' : 'token: off';
   if (HOST) {
-    console.log(`[dashboard] http://${HOST}:${PORT}  (${tokenNote})`);
+    console.log(`[dashboard] http://${HOST}:${PORT}`);
   } else {
-    console.log(
-      `[dashboard] port ${PORT}  (${tokenNote}) — try http://127.0.0.1:${PORT} or http://localhost:${PORT}`
-    );
+    console.log(`[dashboard] port ${PORT} — try http://127.0.0.1:${PORT} or http://localhost:${PORT}`);
   }
 };
 const _autoCloseMs = Number(process.env.POSITION_AUTO_CLOSE_INTERVAL_MS);
@@ -320,6 +313,22 @@ setInterval(() => {
     if (out.errors?.length) {
       for (const e of out.errors) {
         console.warn(`[dashboard] position auto-close failed ${e.tradeId}: ${e.error}`);
+      }
+    }
+  });
+  runTwilightBotApyAutoClosePass().then((out) => {
+    if (out.skipped || (!out.closed?.length && !out.errors?.length)) return;
+    if (out.closed?.length) {
+      for (const c of out.closed) {
+        console.log(
+          `[dashboard] twilight-bot auto-close ${c.positionId}: APY ${Number(c.apy).toFixed(4)}% <= 0%`
+        );
+      }
+    }
+    if (out.errors?.length) {
+      for (const e of out.errors) {
+        const id = e.positionId ? ` ${e.positionId}` : '';
+        console.warn(`[dashboard] twilight-bot auto-close failed${id}: ${e.error}`);
       }
     }
   });

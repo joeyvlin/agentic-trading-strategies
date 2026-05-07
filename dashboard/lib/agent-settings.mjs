@@ -20,7 +20,10 @@ export function readAgentSettings() {
     risk: doc.risk || {},
     execution: doc.execution || { mode: 'simulation' },
     automation: doc.automation || {},
-    positionAutoClose: doc.positionAutoClose || {},
+    positionAutoClose: {
+      ...(doc.positionAutoClose || {}),
+      closeOnNonPositiveApy: doc.positionAutoClose?.closeOnNonPositiveApy !== false,
+    },
   };
 }
 
@@ -64,6 +67,7 @@ export function writeAgentSettings(partial) {
     if ('profitPctOfInitialNotional' in src)
       cur.profitPctOfInitialNotional = norm(src.profitPctOfInitialNotional);
     if ('maxHoldMinutes' in src) cur.maxHoldMinutes = norm(src.maxHoldMinutes);
+    if ('closeOnNonPositiveApy' in src) cur.closeOnNonPositiveApy = src.closeOnNonPositiveApy !== false;
     const kept = Object.fromEntries(Object.entries(cur).filter(([, v]) => v != null));
     if (Object.keys(kept).length) doc.positionAutoClose = kept;
     else delete doc.positionAutoClose;

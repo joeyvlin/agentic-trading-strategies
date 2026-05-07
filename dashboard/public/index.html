@@ -23,23 +23,6 @@
           Dashboard binds to localhost; exchange keys stay in <code>data/exchange-keys.json</code> (gitignored).
         </p>
       </div>
-      <div class="header-actions">
-        <label class="token-field">
-          <span>Dashboard token</span>
-          <input
-            type="password"
-            id="dash-token"
-            placeholder="if DASHBOARD_TOKEN is set"
-            autocomplete="off"
-          />
-        </label>
-        <button type="button" class="btn ghost" id="btn-save-token">Store</button>
-        <p class="hint token-hint">
-          Optional lock: if the server has <code>DASHBOARD_TOKEN</code> in its environment, enter the same value here
-          so requests include <code>x-dashboard-token</code>. If the server runs without that variable, leave this
-          empty (localhost-only is typical).
-        </p>
-      </div>
     </header>
 
     <div id="dashboard-toasts" class="dashboard-toasts" aria-live="polite" aria-relevant="additions"></div>
@@ -162,7 +145,7 @@
           Environment
           <span
             class="help-tip"
-            title="Edits the repo .env on disk. Secrets stay unchanged if you leave the field blank. Presets write official testnet/mainnet endpoint URLs. If DASHBOARD_TOKEN is set on the server, you must also enter it in the header so requests include x-dashboard-token."
+              title="Edits the repo .env on disk. Secrets stay unchanged if you leave the field blank. Presets write official testnet/mainnet endpoint URLs."
             >?</span
           >
         </h2>
@@ -880,6 +863,8 @@
               (<code>notionalUsd</code>, with fallbacks for older rows). <strong>Real</strong> closes need the same
               wallet, relayer, and CEX gates as manual <strong>Close</strong> in P&amp;L — otherwise auto-close logs an
               error and leaves the row open. Leave a field empty to disable that rule.
+              Independently of those fields, a position is auto-closed when its strategy APY is no longer positive
+              (<= 0%).
               Values are written to <code>configs/agent.monitor.yaml</code> under <code>positionAutoClose</code> when you
               click <strong>Save agent settings</strong> (the Advanced YAML editor is refreshed from disk afterward so it
               does not overwrite them with stale text).
@@ -895,6 +880,10 @@
             <label class="field">
               <span>Close if open ≥ minutes</span>
               <input type="text" id="agent-auto-close-max-min" inputmode="numeric" placeholder="e.g. 120" />
+            </label>
+            <label class="inline-check wide">
+              <input type="checkbox" id="agent-auto-close-apy-toggle" checked />
+              <span>Close when strategy APY is non-positive (<= 0%)</span>
             </label>
           </div>
           <div class="btn-row">
@@ -1200,6 +1189,37 @@
           <div class="agentic-bot-grid">
             <section class="card-inset">
               <h3 class="subhead">
+                Strategies
+                <span class="help-tip" title="Queries /strategies with profitable + limit. Venue filter is applied client-side to returned rows.">?</span>
+              </h3>
+              <div class="field-grid">
+                <label class="inline-check">
+                  <input type="checkbox" id="agentic-bot-strategies-profitable" checked />
+                  <span>Only profitable</span>
+                </label>
+                <label class="field">
+                  <span>Limit</span>
+                  <input type="number" id="agentic-bot-strategies-limit" min="1" step="1" placeholder="20" />
+                </label>
+              </div>
+              <div class="field-grid">
+                <label class="inline-check">
+                  <input type="checkbox" id="agentic-bot-strategies-venue-binance" />
+                  <span>Binance leg</span>
+                </label>
+                <label class="inline-check">
+                  <input type="checkbox" id="agentic-bot-strategies-venue-bybit" />
+                  <span>Bybit leg</span>
+                </label>
+              </div>
+              <div class="btn-row">
+                <button type="button" class="btn small" id="btn-agentic-bot-strategies-refresh">Refresh</button>
+              </div>
+              <pre class="out out-compact" id="agentic-bot-strategies-out">Loading…</pre>
+            </section>
+
+            <section class="card-inset">
+              <h3 class="subhead">
                 Trades
                 <span class="help-tip" title="Queries /trades (intent history; supports FTS search and limit).">?</span>
               </h3>
@@ -1224,15 +1244,26 @@
                 Positions
                 <span class="help-tip" title="Queries /positions and allows closing one position by id via /positions/:id/close.">?</span>
               </h3>
+              <p class="hint small">
+                Auto-exit also runs server-side: if a position strategy APY turns non-positive (<= 0%), the dashboard requests a close.
+              </p>
               <div class="field-grid">
                 <label class="field">
-                  <span>Venue</span>
-                  <select id="agentic-bot-positions-venue">
-                    <option value="">all</option>
-                    <option value="twilight">twilight</option>
-                    <option value="binance">binance</option>
-                    <option value="bybit">bybit</option>
-                  </select>
+                  <span>Venue filter</span>
+                  <div class="field-grid">
+                    <label class="inline-check">
+                      <input type="checkbox" id="agentic-bot-positions-venue-twilight" />
+                      <span>twilight</span>
+                    </label>
+                    <label class="inline-check">
+                      <input type="checkbox" id="agentic-bot-positions-venue-binance" />
+                      <span>binance</span>
+                    </label>
+                    <label class="inline-check">
+                      <input type="checkbox" id="agentic-bot-positions-venue-bybit" />
+                      <span>bybit</span>
+                    </label>
+                  </div>
                 </label>
                 <label class="field">
                   <span>Close id</span>
@@ -1344,9 +1375,39 @@
             </label>
           </div>
           <div class="btn-row">
+            <button type="button" class="btn small" id="btn-agentic-cmd-help" data-agentic-cmd="help">help</button>
+            <button type="button" class="btn small" id="btn-agentic-cmd-status" data-agentic-cmd="status">status</button>
+            <button type="button" class="btn small" id="btn-agentic-cmd-health" data-agentic-cmd="health">health</button>
+            <button type="button" class="btn small" id="btn-agentic-cmd-positions" data-agentic-cmd="positions">positions</button>
+            <button type="button" class="btn small" id="btn-agentic-cmd-strategies" data-agentic-cmd="strategies profitable=true limit=10">strategies preset</button>
+          </div>
+          <div class="btn-row">
             <button type="button" class="btn small" id="btn-agentic-process-command-send">Send command</button>
           </div>
           <pre class="out out-compact" id="agentic-process-command-out">—</pre>
+          <h3 class="subhead">Terminal commands</h3>
+          <p class="hint small">
+            Copy/paste into terminal. The first block is stdin commands (when the process is attached); the second block
+            is HTTP control commands that work against any live bot API.
+          </p>
+          <pre class="out out-compact" id="agentic-terminal-stdin-cmds">help
+status
+health
+strategies profitable=true limit=10 venue=binance,bybit
+positions venue=twilight,binance,bybit
+trades limit=25 q=funding
+ticks skill=funding-arb status=noop limit=100
+kill on
+kill off
+caps</pre>
+          <pre class="out out-compact" id="agentic-terminal-http-cmds">curl 'http://127.0.0.1:8787/healthz'
+curl 'http://127.0.0.1:8787/strategies?profitable=true&amp;limit=10'
+curl 'http://127.0.0.1:8787/positions'
+curl 'http://127.0.0.1:8787/trades?limit=25'
+curl 'http://127.0.0.1:8787/ticks?skill=funding-arb&amp;status=noop&amp;limit=50'
+curl -X PUT 'http://127.0.0.1:8787/kill-switch' -H 'content-type: application/json' -d '{"on":true}'
+curl -X PUT 'http://127.0.0.1:8787/kill-switch' -H 'content-type: application/json' -d '{"on":false}'</pre>
+          <pre class="out out-compact" id="agentic-terminal-start-cmd">cd external/twilight-bot &amp;&amp; npm install &amp;&amp; npm run build &amp;&amp; npm start</pre>
           <h3 class="subhead">Recent bot output</h3>
           <p class="hint small">Live stdout/stderr/stdin from the process spawned by this dashboard.</p>
           <pre class="out out-compact" id="agentic-process-logs-out">Loading…</pre>

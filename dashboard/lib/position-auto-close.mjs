@@ -1,6 +1,8 @@
 import { readAgentSettings } from './agent-settings.mjs';
 import { getPositionPnlSummary, unrealizedUsdForOpen } from './position-ledger.mjs';
 import { executeFullPositionClose } from './position-close-service.mjs';
+import { getStrategyApiEnv } from './env-store.mjs';
+import { fetchStrategyById } from '../../agents/twilight-strategy-monitor/src/strategyClient.js';
 
 /** Baseline USD for % loss/profit vs stored trade size (fallbacks for older ledger rows). */
 export function initialNotionalBaselineUsd(open) {
@@ -20,7 +22,7 @@ function parseRulesFromSettings() {
   try {
     s = readAgentSettings();
   } catch {
-    return { lossPct: null, profitPct: null, maxHoldMinutes: null };
+    return { lossPct: null, profitPct: null, maxHoldMinutes: null, closeOnNonPositiveApy: true };
   }
   const pc = s.positionAutoClose || {};
   const lossPct = Number(pc.lossPctOfInitialNotional);
@@ -30,6 +32,7 @@ function parseRulesFromSettings() {
     lossPct: Number.isFinite(lossPct) && lossPct > 0 ? lossPct : null,
     profitPct: Number.isFinite(profitPct) && profitPct > 0 ? profitPct : null,
     maxHoldMinutes: Number.isFinite(maxMins) && maxMins > 0 ? maxMins : null,
+    closeOnNonPositiveApy: pc.closeOnNonPositiveApy !== false,
   };
 }
 
@@ -68,13 +71,33 @@ export function autoCloseReasonsForOpen(open, unrealizedUsd, rules) {
   return reasons;
 }
 
+function extractStrategyApy(raw) {
+  if (raw == null) return null;
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
+  if (typeof raw !== 'object') return null;
+  const candidates = [
+    raw.apy,
+    raw.apyPercent,
+    raw.strategy?.apy,
+    raw.strategy?.apyPercent,
+    raw.data?.apy,
+    raw.data?.strategy?.apy,
+  ];
+  for (const c of candidates) {
+    const n = Number(c);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
 /**
  * Evaluates YAML `positionAutoClose` against all open ledger rows; closes via the same path as the UI.
  * @returns {Promise<{ skipped?: boolean, checked: number, closed: { tradeId: string, reasons: string[] }[], errors: { tradeId: string, error: string }[] }>}
  */
 export async function runPositionAutoClosePass() {
   const rules = parseRulesFromSettings();
-  if (rules.lossPct == null && rules.profitPct == null && rules.maxHoldMinutes == null) {
+  const apyRuleEnabled = rules.closeOnNonPositiveApy !== false;
+  if (rules.lossPct == null && rules.profitPct == null && rules.maxHoldMinutes == null && !apyRuleEnabled) {
     return { skipped: true, checked: 0, closed: [], errors: [] };
   }
 
@@ -83,6 +106,24 @@ export async function runPositionAutoClosePass() {
   const btc = Number(ledger.currentBtcPrice) || 0;
   const closed = [];
   const errors = [];
+  const apyByStrategyId = new Map();
+  const apyErrorsByStrategyId = new Map();
+  if (apyRuleEnabled && opens.length) {
+    const { base, key } = getStrategyApiEnv();
+    if (!key) {
+      apyErrorsByStrategyId.set('*', 'STRATEGY_API_KEY is not set');
+    } else {
+      const ids = [...new Set(opens.map((o) => Number(o?.strategyId)).filter((n) => Number.isFinite(n)))];
+      for (const strategyId of ids) {
+        try {
+          const payload = await fetchStrategyById(base, key, strategyId);
+          apyByStrategyId.set(strategyId, extractStrategyApy(payload));
+        } catch (e) {
+          apyErrorsByStrategyId.set(strategyId, e?.message || String(e));
+        }
+      }
+    }
+  }
 
   for (const open of opens) {
     const u =
@@ -90,6 +131,23 @@ export async function runPositionAutoClosePass() {
         ? Number(open.unrealizedPnlUsd)
         : unrealizedUsdForOpen(open, btc);
     const reasons = autoCloseReasonsForOpen(open, u, rules);
+    const sid = Number(open?.strategyId);
+    if (apyRuleEnabled && Number.isFinite(sid)) {
+      const apy = apyByStrategyId.get(sid);
+      if (apy != null && apy <= 0) {
+        reasons.push(`strategy APY ${apy.toFixed(4)}% is non-positive (<= 0%)`);
+      } else if (apy == null && apyErrorsByStrategyId.has(sid)) {
+        errors.push({
+          tradeId: open.tradeId,
+          error: `APY check failed for strategy ${sid}: ${apyErrorsByStrategyId.get(sid)}`,
+        });
+      } else if (apy == null && apyErrorsByStrategyId.has('*')) {
+        errors.push({
+          tradeId: open.tradeId,
+          error: `APY check skipped for strategy ${sid}: ${apyErrorsByStrategyId.get('*')}`,
+        });
+      }
+    }
     if (!reasons.length) continue;
 
     try {

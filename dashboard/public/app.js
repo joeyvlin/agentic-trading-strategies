@@ -34,8 +34,6 @@ let lastOpenPositions = [];
 
 const api = (path, opts = {}) => {
   const headers = { ...opts.headers };
-  const token = localStorage.getItem('dashboardToken');
-  if (token) headers['x-dashboard-token'] = token;
   return fetch(path, { ...opts, headers });
 };
 
@@ -494,7 +492,7 @@ async function readJson(path, opts = {}) {
   if (res.status === 401) {
     throw new Error(
       appendRequestLine(
-        'Unauthorized — set the dashboard token in the header if the server has DASHBOARD_TOKEN set (x-dashboard-token).',
+        'Unauthorized request.',
         path,
         opts
       )
@@ -2924,16 +2922,77 @@ async function refreshBotTrades(opts = {}) {
   }
 }
 
+function botStrategyHasVenue(strategy, venue) {
+  const v = String(venue || '').toLowerCase();
+  if (v === 'bybit') {
+    if (strategy?.isBybitStrategy) return true;
+    const p = String(strategy?.bybitPosition || '').toLowerCase();
+    return p === 'long' || p === 'short';
+  }
+  if (v === 'binance') {
+    const p = String(strategy?.binancePosition || '').toLowerCase();
+    return p === 'long' || p === 'short';
+  }
+  return false;
+}
+
+function selectedBotStrategyVenues() {
+  const venues = [];
+  if (document.getElementById('agentic-bot-strategies-venue-binance')?.checked) venues.push('binance');
+  if (document.getElementById('agentic-bot-strategies-venue-bybit')?.checked) venues.push('bybit');
+  return venues;
+}
+
+async function refreshBotStrategies(opts = {}) {
+  const out = document.getElementById('agentic-bot-strategies-out');
+  if (!out) return;
+  out.textContent = 'Loading…';
+  try {
+    const profitable = document.getElementById('agentic-bot-strategies-profitable')?.checked === true;
+    const limit = readNumOrDefault('agentic-bot-strategies-limit', 20);
+    const qs = new URLSearchParams();
+    if (profitable) qs.set('profitable', 'true');
+    if (limit) qs.set('limit', String(limit));
+    const data = await readJson(`/api/twilight-bot/strategies${qs.size ? `?${qs.toString()}` : ''}`);
+    const selected = selectedBotStrategyVenues();
+    if (!Array.isArray(data?.strategies) || selected.length === 0) {
+      out.textContent = asPrettyJson(data);
+      return;
+    }
+    const filtered = data.strategies.filter((s) => selected.some((v) => botStrategyHasVenue(s, v)));
+    out.textContent = asPrettyJson({
+      ...data,
+      count: filtered.length,
+      _filter: { venueAnyOf: selected },
+      strategies: filtered,
+    });
+  } catch (e) {
+    const m = errMsg(e);
+    out.textContent = m;
+    if (opts.userAction) showDashboardError(m, 'twilight-bot strategies');
+  }
+}
+
+function selectedBotPositionVenues() {
+  const out = [];
+  if (document.getElementById('agentic-bot-positions-venue-twilight')?.checked) out.push('twilight');
+  if (document.getElementById('agentic-bot-positions-venue-binance')?.checked) out.push('binance');
+  if (document.getElementById('agentic-bot-positions-venue-bybit')?.checked) out.push('bybit');
+  return out;
+}
+
 async function refreshBotPositions(opts = {}) {
   const out = document.getElementById('agentic-bot-positions-out');
   if (!out) return;
   out.textContent = 'Loading…';
   try {
-    const venue = document.getElementById('agentic-bot-positions-venue')?.value?.trim() ?? '';
-    const qs = new URLSearchParams();
-    if (venue) qs.set('venue', venue);
-    const data = await readJson(`/api/twilight-bot/positions${qs.size ? `?${qs.toString()}` : ''}`);
-    out.textContent = asPrettyJson(data);
+    const data = await readJson('/api/twilight-bot/positions');
+    const selected = selectedBotPositionVenues();
+    if (!Array.isArray(data) || selected.length === 0) {
+      out.textContent = asPrettyJson(data);
+      return;
+    }
+    out.textContent = asPrettyJson(data.filter((row) => selected.includes(String(row?.venue || '').toLowerCase())));
   } catch (e) {
     const m = errMsg(e);
     out.textContent = m;
@@ -3275,6 +3334,8 @@ async function loadAgentSettings(opts = {}) {
       'agent-auto-close-max-min',
       mm != null && Number.isFinite(Number(mm)) && Number(mm) > 0 ? mm : ''
     );
+    const apyToggle = document.getElementById('agent-auto-close-apy-toggle');
+    if (apyToggle) apyToggle.checked = pac.closeOnNonPositiveApy !== false;
     if (msg) {
       msg.textContent = '';
       msg.classList.remove('hint-error');
@@ -3324,6 +3385,8 @@ document.getElementById('btn-save-agent')?.addEventListener('click', async () =>
           lossPctOfInitialNotional: document.getElementById('agent-auto-close-loss-pct')?.value,
           profitPctOfInitialNotional: document.getElementById('agent-auto-close-profit-pct')?.value,
           maxHoldMinutes: document.getElementById('agent-auto-close-max-min')?.value,
+          closeOnNonPositiveApy:
+            document.getElementById('agent-auto-close-apy-toggle')?.checked !== false,
         },
       }),
     });
@@ -3990,15 +4053,6 @@ async function testExchangeKey(venue) {
     showDashboardError(m, 'Test CEX key');
   }
 }
-
-document.getElementById('btn-save-token')?.addEventListener('click', () => {
-  const v = document.getElementById('dash-token').value.trim();
-  if (v) localStorage.setItem('dashboardToken', v);
-  else localStorage.removeItem('dashboardToken');
-  refreshStatus({ userAction: true });
-  refreshWalletList();
-  refreshEnv();
-});
 
 document.getElementById('wallet-select')?.addEventListener('change', (ev) => {
   const v = ev.target.value;
@@ -4783,9 +4837,20 @@ document.getElementById('agentic-process-command')?.addEventListener('keydown', 
   if (!ok) return;
   sendAgenticProcessCommand({ userAction: true });
 });
+for (const btn of document.querySelectorAll('[data-agentic-cmd]')) {
+  btn.addEventListener('click', () => {
+    const input = document.getElementById('agentic-process-command');
+    if (!input) return;
+    input.value = btn.getAttribute('data-agentic-cmd') || '';
+    input.focus();
+  });
+}
 
 document.getElementById('btn-agentic-bot-trades-refresh')?.addEventListener('click', () => {
   refreshBotTrades({ userAction: true });
+});
+document.getElementById('btn-agentic-bot-strategies-refresh')?.addEventListener('click', () => {
+  refreshBotStrategies({ userAction: true });
 });
 document.getElementById('btn-agentic-bot-positions-refresh')?.addEventListener('click', () => {
   refreshBotPositions({ userAction: true });
@@ -4863,9 +4928,6 @@ document.getElementById('btn-tb-params-save')?.addEventListener('click', () => {
   saveTwilightBotParams();
 });
 
-const tok = localStorage.getItem('dashboardToken');
-const dashTokEl = document.getElementById('dash-token');
-if (tok && dashTokEl) dashTokEl.value = tok;
 const walletSessionModeEl = document.getElementById('wallet-session-mode');
 if (walletSessionModeEl) walletSessionModeEl.value = getPersistedWalletSessionMode();
 updateWalletSessionStatus();
@@ -4913,6 +4975,7 @@ if (intentTa && !intentTa.value.trim()) {
 }
 
 refreshBotTrades();
+refreshBotStrategies();
 refreshBotPositions();
 refreshBotTicks();
 refreshTwilightBotParams();

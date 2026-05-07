@@ -68,14 +68,6 @@ export const ENV_DEFS = [
     type: 'text',
   },
   {
-    key: 'DASHBOARD_TOKEN',
-    group: 'dashboard',
-    label: 'Dashboard token',
-    help: 'If set, browser must send the same value as x-dashboard-token. Leave empty to disable.',
-    secret: true,
-    type: 'password',
-  },
-  {
     key: 'STRATEGY_API_BASE_URL',
     group: 'strategy',
     label: 'Strategy API base URL',

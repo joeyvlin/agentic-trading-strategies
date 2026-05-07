@@ -19,3 +19,5 @@ automation:
   autoPickZkOsAccount: true
   persistTwilightIndexAfterRotate: true
   openTradeMaxZkAttempts: 3
+positionAutoClose:
+  closeOnNonPositiveApy: true
