@@ -3095,7 +3095,7 @@ async function refreshBotStrategies(opts = {}) {
     const qs = new URLSearchParams();
     if (profitable) qs.set('profitable', 'true');
     if (limit) qs.set('limit', String(limit));
-    const data = await readJson(`/api/twilight-bot/strategies${qs.size ? `?${qs.toString()}` : ''}`);
+    const data = await readJson(`/api/strategies/best${qs.size ? `?${qs.toString()}` : ''}`);
     const selected = selectedBotStrategyVenues();
     if (!Array.isArray(data?.strategies) || selected.length === 0) {
       out.textContent = asPrettyJson(data);
@@ -3374,7 +3374,7 @@ async function sendAgenticProcessCommand(opts = {}) {
       if (optsMap.risk) qs.set('risk', String(optsMap.risk));
       if (optsMap.category) qs.set('category', String(optsMap.category));
       if (optsMap.minApy) qs.set('minApy', String(optsMap.minApy));
-      const raw = await readJson(`/api/twilight-bot/strategies${qs.size ? `?${qs.toString()}` : ''}`);
+      const raw = await readJson(`/api/strategies/best${qs.size ? `?${qs.toString()}` : ''}`);
       const venueCsv = String(optsMap.venue || '').trim().toLowerCase();
       if (!venueCsv || !Array.isArray(raw?.strategies)) {
         data = raw;
