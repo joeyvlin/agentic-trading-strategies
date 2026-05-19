@@ -2765,6 +2765,7 @@ async function spinUpAgentic() {
     showDashboardSuccess(`Spin up complete (pid ${r.pid ?? '—'}).${stepSummary}`, 'Twilight-bot');
     await refreshAgenticProcessStatus({ userAction: true });
     await refreshAgenticTrading({ userAction: false });
+    buildIntentJsonFromExitFields(); // pre-populate intent with saved exit rules
   } catch (e) {
     showDashboardError(errMsg(e), 'Spin up twilight-bot');
   }
@@ -3013,6 +3014,36 @@ async function saveTwilightBotParams() {
 }
 
 /** Build intent JSON exit rules from the TP/SL/time fields and inject into the textarea. */
+const EXIT_CONDITIONS_KEY = 'botExitConditionsV1';
+
+function saveExitConditions() {
+  try {
+    localStorage.setItem(EXIT_CONDITIONS_KEY, JSON.stringify({
+      tpPct:              document.getElementById('tb-exit-take-profit-pct')?.value ?? '',
+      slPct:              document.getElementById('tb-exit-stop-loss-pct')?.value ?? '',
+      maxHrs:             document.getElementById('tb-exit-max-hours')?.value ?? '',
+      closeUnprofitable:  document.getElementById('tb-exit-close-unprofitable')?.checked === true,
+      closeSpreadInverts: document.getElementById('tb-exit-close-spread-inverts')?.checked === true,
+    }));
+  } catch { /* storage unavailable */ }
+}
+
+function loadExitConditions() {
+  try {
+    const raw = localStorage.getItem(EXIT_CONDITIONS_KEY);
+    if (!raw) return;
+    const v = JSON.parse(raw);
+    const setVal = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.value = val; };
+    const setChk = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.checked = !!val; };
+    setVal('tb-exit-take-profit-pct',   v.tpPct);
+    setVal('tb-exit-stop-loss-pct',     v.slPct);
+    setVal('tb-exit-max-hours',         v.maxHrs);
+    setChk('tb-exit-close-unprofitable',  v.closeUnprofitable);
+    setChk('tb-exit-close-spread-inverts', v.closeSpreadInverts);
+    buildIntentJsonFromExitFields();
+  } catch { /* ignore */ }
+}
+
 function buildIntentJsonFromExitFields() {
   const tpPct  = parseFloat(document.getElementById('tb-exit-take-profit-pct')?.value ?? '');
   const slPct  = parseFloat(document.getElementById('tb-exit-stop-loss-pct')?.value ?? '');
@@ -5182,8 +5213,13 @@ document.getElementById('btn-agentic-bot-kill-off')?.addEventListener('click', a
   botKillSwitchSet(false, { userAction: true });
 });
 document.getElementById('btn-tb-build-intent-json')?.addEventListener('click', () => {
+  saveExitConditions();
   buildIntentJsonFromExitFields();
 });
+for (const id of ['tb-exit-take-profit-pct', 'tb-exit-stop-loss-pct', 'tb-exit-max-hours',
+                   'tb-exit-close-unprofitable', 'tb-exit-close-spread-inverts']) {
+  document.getElementById(id)?.addEventListener('change', saveExitConditions);
+}
 document.getElementById('btn-agentic-bot-caps')?.addEventListener('click', async () => {
   const ok = await openAgenticConfirmModal({
     title: 'Fetch caps?',
@@ -5267,6 +5303,7 @@ if (intentTa && !intentTa.value.trim()) {
   );
 }
 
+loadExitConditions(); // restore saved exit rules and rebuild intent JSON
 refreshBotTrades();
 refreshBotStrategies();
 refreshBotPositions();
