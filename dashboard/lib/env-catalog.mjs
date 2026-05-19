@@ -243,8 +243,15 @@ export const ENV_DEFS = [
   {
     key: 'BYBIT_USE_TESTNET',
     group: 'cex',
-    label: 'Bybit testnet',
-    help: 'Set to 1 for testnet.',
+    label: 'Bybit testnet (monitor)',
+    help: 'Set to 1 for testnet. Used by the strategy monitor and trade desk.',
+    type: 'text',
+  },
+  {
+    key: 'BYBIT_TESTNET',
+    group: 'cex',
+    label: 'Bybit testnet (bot)',
+    help: 'Set to 1 for testnet. Used by the twilight-bot. Set automatically when you save CEX keys.',
     type: 'text',
   },
   {

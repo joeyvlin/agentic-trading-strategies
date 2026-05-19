@@ -5,7 +5,7 @@ import {
   saveExchangeKeys,
   updateExchangeKeyLastStatus,
 } from './exchange-keys-store.mjs';
-import { getStrategyApiEnv } from './env-store.mjs';
+import { getStrategyApiEnv, mergeAndWriteEnv } from './env-store.mjs';
 
 /**
  * @param {import('express').Express} app
@@ -66,6 +66,21 @@ export function registerDashboardDataRoutes(app, { requireToken }) {
   const putExchangeKeys = (req, res) => {
     try {
       const masked = saveExchangeKeys(req.body || {});
+      // Mirror non-empty keys into .env so the twilight-bot and monitor both see them.
+      const saved = loadExchangeKeys() || {};
+      const bin = saved.binance || {};
+      const by = saved.bybit || {};
+      const envUpdates = {};
+      if (bin.apiKey) envUpdates.BINANCE_API_KEY = bin.apiKey;
+      if (bin.apiSecret) envUpdates.BINANCE_API_SECRET = bin.apiSecret;
+      if (bin.useTestnet !== undefined) envUpdates.BINANCE_TESTNET = bin.useTestnet ? '1' : '';
+      if (by.apiKey) envUpdates.BYBIT_API_KEY = by.apiKey;
+      if (by.apiSecret) envUpdates.BYBIT_API_SECRET = by.apiSecret;
+      if (by.useTestnet !== undefined) {
+        envUpdates.BYBIT_TESTNET = by.useTestnet ? '1' : '';
+        envUpdates.BYBIT_USE_TESTNET = by.useTestnet ? '1' : '';
+      }
+      if (Object.keys(envUpdates).length) mergeAndWriteEnv(envUpdates);
       res.json({ ok: true, ...masked });
     } catch (e) {
       res.status(500).json({ error: e.message || String(e) });
