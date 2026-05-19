@@ -1,672 +1,569 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Agentic Trading — Desk</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700&family=Fraunces:opsz,wght@9..144,500;9..144,700&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="/styles.css" />
-  </head>
-  <body>
-    <div class="noise" aria-hidden="true"></div>
-    <header class="top">
-      <div>
-        <p class="eyebrow">Agentic Trading Strategies</p>
-        <h1>Trading desk</h1>
-        <p class="tagline muted">
-          Twilight <code>relayer-cli</code>, testnet faucet, Strategy API ideas, and venue-aware P&amp;L.
-          Dashboard binds to localhost; exchange keys stay in <code>data/exchange-keys.json</code> (gitignored).
-        </p>
+<html lang="en" class="bg-surface">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Trading Desk</title>
+  <link rel="stylesheet" href="/output.css" />
+</head>
+<body class="min-h-screen text-ink">
+
+<!-- ── Toasts ───────────────────────────────────────────────────────── -->
+<div id="dashboard-toasts" class="dashboard-toasts" aria-live="polite" aria-relevant="additions"></div>
+
+<!-- ── Result modal ─────────────────────────────────────────────────── -->
+<div id="modal-dashboard-result" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="modal-dashboard-result-title">
+  <div class="modal-dialog" id="modal-dashboard-result-dialog">
+    <h2 id="modal-dashboard-result-title" class="text-base font-semibold mb-2">Result</h2>
+    <p class="text-xs text-ink-muted mb-3" id="modal-dashboard-result-sub"></p>
+    <pre class="out mb-4" id="modal-dashboard-result-body"></pre>
+    <div class="flex justify-end">
+      <button type="button" class="btn-primary" id="modal-dashboard-result-ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Confirm modal ────────────────────────────────────────────────── -->
+<div id="modal-agentic-confirm" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="modal-agentic-confirm-title">
+  <div class="modal-dialog">
+    <h2 id="modal-agentic-confirm-title" class="text-base font-semibold mb-2">Confirm action</h2>
+    <p class="text-sm text-ink-muted mb-4" id="modal-agentic-confirm-message">Are you sure?</p>
+    <div class="flex gap-2 justify-end">
+      <button type="button" class="btn" id="modal-agentic-confirm-cancel">Cancel</button>
+      <button type="button" class="btn-danger" id="modal-agentic-confirm-ok">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Real trade modal ─────────────────────────────────────────────── -->
+<div id="modal-real-trade" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-dialog-wide">
+    <div class="flex items-start justify-between mb-4">
+      <h2 class="text-base font-semibold">Open real trade</h2>
+      <button type="button" class="btn btn-sm" id="modal-real-trade-close">✕</button>
+    </div>
+    <p class="text-xs text-ink-muted mb-4" id="modal-real-trade-sub"></p>
+    <div class="grid grid-cols-2 gap-4 mb-4">
+      <div class="field">
+        <label class="label">Total USD notional</label>
+        <input type="number" id="modal-real-trade-notional" class="input" placeholder="200" min="10" step="5" />
+        <div class="flex gap-2 mt-1">
+          <button type="button" class="btn btn-sm" data-scale="0.25">25%</button>
+          <button type="button" class="btn btn-sm" data-scale="0.5">50%</button>
+          <button type="button" class="btn btn-sm" data-scale="1">100%</button>
+        </div>
       </div>
-    </header>
-
-    <div id="dashboard-toasts" class="dashboard-toasts" aria-live="polite" aria-relevant="additions"></div>
-
-    <div
-      id="modal-dashboard-result"
-      class="modal-overlay modal-dashboard-result-overlay"
-      hidden
-      aria-hidden="true"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="modal-dashboard-result-title"
-    >
-      <div class="modal-dialog card modal-dashboard-result-dialog" id="modal-dashboard-result-dialog">
-        <div class="modal-head">
-          <h2 id="modal-dashboard-result-title" class="modal-title">Result</h2>
-        </div>
-        <p class="muted small modal-dashboard-result-sub" id="modal-dashboard-result-sub"></p>
-        <pre class="out modal-dashboard-result-body" id="modal-dashboard-result-body"></pre>
-        <div class="btn-row modal-actions">
-          <button type="button" class="btn primary" id="modal-dashboard-result-ok">OK</button>
-        </div>
+      <div class="field">
+        <label class="label">ZkOS account index</label>
+        <input type="number" id="modal-real-trade-zkos-index" class="input" placeholder="auto" min="0" />
+        <p class="text-xs text-ink-muted mt-1" id="modal-real-trade-zkos-hint"></p>
       </div>
     </div>
-    <div
-      id="modal-agentic-confirm"
-      class="modal-overlay"
-      hidden
-      aria-hidden="true"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="modal-agentic-confirm-title"
-    >
-      <div class="modal-dialog card">
-        <div class="modal-head">
-          <h2 id="modal-agentic-confirm-title" class="modal-title">Confirm action</h2>
+    <pre class="out mb-4" id="modal-real-trade-preview"></pre>
+    <div class="flex gap-2 justify-end">
+      <button type="button" class="btn" id="modal-real-trade-cancel">Cancel</button>
+      <button type="button" class="btn-primary" id="modal-real-trade-ok">Open trade</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Strategy details modal ───────────────────────────────────────── -->
+<div id="modal-strategy-details" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-dialog-wide">
+    <div class="flex items-start justify-between mb-3">
+      <h2 class="text-base font-semibold" id="modal-strategy-details-title">Strategy</h2>
+      <button type="button" class="btn btn-sm" id="modal-strategy-details-close">✕</button>
+    </div>
+    <pre class="out mb-4" id="modal-strategy-details-body"></pre>
+    <div class="flex gap-2 justify-end">
+      <button type="button" class="btn" id="modal-strategy-details-dismiss">Close</button>
+      <button type="button" class="btn-primary" id="modal-strategy-details-run">Open trade ↗</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Position details modal ───────────────────────────────────────── -->
+<div id="modal-position-details" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-dialog-wide">
+    <div class="flex items-start justify-between mb-3">
+      <h2 class="text-base font-semibold">Position details</h2>
+      <button type="button" class="btn btn-sm" id="modal-position-details-close">✕</button>
+    </div>
+    <pre class="out mb-4" id="modal-position-details-body"></pre>
+    <div class="flex gap-2 justify-end">
+      <button type="button" class="btn" id="modal-position-details-dismiss">Close</button>
+      <button type="button" class="btn-danger" id="modal-position-details-close-trade">Close position</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- HEADER                                                             -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<header class="border-b border-edge bg-surface-card/70 sticky top-0 z-40 backdrop-blur-sm">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6">
+
+    <!-- Top row: title + system status bar -->
+    <div class="flex items-center justify-between py-3 gap-4">
+      <div class="flex items-center gap-3">
+        <div>
+          <p class="text-xs text-ink-muted font-display uppercase tracking-widest">Agentic Trading</p>
+          <h1 class="font-display text-lg font-semibold text-ink leading-tight">Trading Desk</h1>
         </div>
-        <p class="muted" id="modal-agentic-confirm-message">Are you sure?</p>
-        <div class="btn-row modal-actions">
-          <button type="button" class="btn" id="modal-agentic-confirm-cancel">Cancel</button>
-          <button type="button" class="btn primary danger" id="modal-agentic-confirm-ok">Confirm</button>
-        </div>
+      </div>
+
+      <!-- System status bar -->
+      <div class="flex items-center gap-3 flex-wrap" id="sys-status-bar">
+        <span class="pill-muted" id="sys-status-network">
+          <span class="dot-muted" id="sys-status-network-dot"></span>
+          <span id="sys-status-network-label">network</span>
+        </span>
+        <span class="pill-muted" id="sys-status-monitor">
+          <span class="dot-muted" id="sys-status-monitor-dot"></span>
+          <span id="sys-status-monitor-label">monitor</span>
+        </span>
+        <span class="pill-muted" id="sys-status-bot">
+          <span class="dot-muted" id="sys-status-bot-dot"></span>
+          <span id="sys-status-bot-label">bot</span>
+        </span>
+        <span class="pill-muted" id="sys-status-killswitch" hidden>
+          <span class="dot-danger"></span>
+          <span>KILL ON</span>
+        </span>
       </div>
     </div>
 
-    <main class="grid flow-grid">
-      <div class="desk-tabs desk-span-all" role="tablist" aria-label="Desk mode">
-        <button
-          type="button"
-          class="desk-tab is-active"
-          role="tab"
-          id="tab-desk-manual"
-          aria-selected="true"
-          aria-controls="desk-panel-manual"
-        >
-          Manual
-        </button>
-        <button
-          type="button"
-          class="desk-tab"
-          role="tab"
-          id="tab-desk-automated"
-          aria-selected="false"
-          aria-controls="desk-panel-automated"
-        >
-          Automated
-        </button>
-        <button
-          type="button"
-          class="desk-tab"
-          role="tab"
-          id="tab-desk-agentic"
-          aria-selected="false"
-          aria-controls="desk-panel-agentic"
-        >
-          Agentic
-        </button>
+    <!-- Tab bar -->
+    <div class="tab-bar" role="tablist" aria-label="Desk mode">
+      <button type="button" class="tab-btn is-active" role="tab" id="tab-desk-manual" aria-selected="true" aria-controls="desk-panel-manual">
+        Setup
+      </button>
+      <button type="button" class="tab-btn" role="tab" id="tab-desk-automated" aria-selected="false" aria-controls="desk-panel-automated">
+        Trade
+      </button>
+      <button type="button" class="tab-btn" role="tab" id="tab-desk-agentic" aria-selected="false" aria-controls="desk-panel-agentic">
+        Bot
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-4">
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB 1 · SETUP (was "Manual")                                       -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div id="desk-panel-manual" role="tabpanel" aria-labelledby="tab-desk-manual">
+
+  <!-- Environment config -->
+  <section class="card" id="sec-env">
+    <div class="section-heading">
+      <h2>Environment <span class="help-tip" data-tip="Edits the repo .env on disk. Secrets stay unchanged if you leave the field blank.">?</span></h2>
+      <div class="flex gap-2 flex-wrap">
+        <button type="button" class="btn btn-sm" id="btn-env-preset-testnet">Testnet preset</button>
+        <button type="button" class="btn btn-sm" id="btn-env-preset-mainnet">Mainnet preset</button>
+        <button type="button" class="btn btn-sm" id="btn-env-example-key">Example API key</button>
+        <button type="button" class="btn btn-sm" id="btn-env-view-raw">View raw</button>
+        <button type="button" class="btn btn-sm" id="btn-env-reload">Reload</button>
+        <button type="button" class="btn-primary btn-sm" id="btn-env-save">Save .env</button>
       </div>
-      <div class="desk-mode-cheatsheet desk-span-all muted small" aria-label="Mode quick guide">
-        <span><strong>Manual:</strong> direct wallet, ZkOS, keys, and trade actions.</span>
-        <span><strong>Automated:</strong> monitor loop, filters, risk caps, and auto-close settings.</span>
-        <span><strong>Agentic:</strong> twilight-bot runtime controls.</span>
+    </div>
+    <div id="env-form-root" class="space-y-2"></div>
+    <p class="text-xs text-ink-muted mt-2" id="env-path-hint"></p>
+    <p class="text-xs text-ink-muted" id="env-msg"></p>
+    <div id="env-raw-panel" hidden class="mt-3">
+      <p class="alert-warn mb-2">Exact file on disk (includes secrets). Use only on a trusted screen.</p>
+      <pre class="out out-tall" id="env-raw-content"></pre>
+    </div>
+  </section>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+    <!-- Wallet & network -->
+    <section class="card" id="sec-wallet">
+      <div class="section-heading">
+        <h2><span class="text-gold font-display">1</span> Wallet <span class="help-tip" data-tip="Select wallet + passphrase. Faucet/Manage/ZkOS reuse it.">?</span></h2>
       </div>
 
-      <nav class="flow-nav flow-nav-manual desk-span-all" aria-label="Manual sections">
-        <a href="#sec-env">Environment</a>
-        <a href="#sec-wallet">Wallet</a>
-        <a href="#sec-faucet">Faucet</a>
-        <a href="#sec-manage">Manage</a>
-        <a href="#sec-zkos">ZkOS</a>
-        <a href="#sec-keys">CEX keys</a>
-        <a href="#sec-strategies">Best trades</a>
-        <a href="#sec-agent-pnl">P&amp;L</a>
-        <a href="#sec-trade-desk">Trades</a>
-        <a href="#sec-advanced" class="desk-link-automated">Advanced →</a>
-        <a href="#sec-agent" class="desk-link-automated">Automated trading →</a>
-      </nav>
+      <div class="card-inset mb-3">
+        <p class="label mb-2">Twilight network</p>
+        <div class="flex gap-2">
+          <select id="twilight-network-mode" class="input">
+            <option value="testnet">testnet</option>
+            <option value="mainnet">mainnet</option>
+          </select>
+          <button type="button" class="btn-primary btn-sm whitespace-nowrap" id="btn-apply-twilight-network">Apply</button>
+        </div>
+        <p class="text-xs text-ink-muted mt-1" id="twilight-network-hint"></p>
+      </div>
 
-      <nav class="flow-nav flow-nav-automated desk-span-all" aria-label="Automated desk" hidden>
-        <a href="#sec-agent" class="desk-link-automated">Automated trading</a>
-        <a href="#sec-agent-pnl-auto">P&amp;L</a>
-        <a href="#sec-advanced" class="desk-link-automated">Advanced</a>
-        <span class="desk-nav-sep muted small" aria-hidden="true">·</span>
-        <span class="muted small">Setup:</span>
-        <a href="#sec-env" class="desk-link-manual" data-sec="sec-env">Environment</a>
-        <a href="#sec-wallet" class="desk-link-manual" data-sec="sec-wallet">Wallet</a>
-        <a href="#sec-keys" class="desk-link-manual" data-sec="sec-keys">CEX keys</a>
-        <a href="#sec-zkos" class="desk-link-manual" data-sec="sec-zkos">ZkOS</a>
-      </nav>
+      <div id="wallet-auth-logged-in" hidden class="card-inset mb-3">
+        <p class="text-sm text-ok mb-2" id="wallet-auth-logged-in-label"></p>
+        <button type="button" class="btn btn-sm" id="btn-wallet-logout">Log out</button>
+      </div>
 
-      <nav class="flow-nav flow-nav-agentic desk-span-all" aria-label="Agentic sections" hidden>
-        <a href="#sec-agentic-bot-console">twilight-bot console</a>
-        <a href="#sec-agentic-process">Run</a>
-        <a href="#sec-agentic-pnl">Agent P&amp;L</a>
-      </nav>
+      <div id="wallet-auth-logged-out" class="space-y-3">
+        <div class="field">
+          <label class="label">Wallet</label>
+          <select id="wallet-select" class="input">
+            <option value="">— Load wallets —</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="label">Password</label>
+          <input type="password" id="wallet-pass" class="input" autocomplete="off" placeholder="or NYKS_WALLET_PASSPHRASE in .env" />
+        </div>
+        <div class="flex gap-2 flex-wrap items-end">
+          <button type="button" class="btn btn-sm" id="btn-wallet-refresh">Refresh list</button>
+          <select id="wallet-session-mode" class="input text-xs max-w-[180px]">
+            <option value="session">Session-only</option>
+            <option value="remember">Remember on device</option>
+          </select>
+          <button type="button" class="btn-primary btn-sm" id="btn-wallet-login">Log in</button>
+        </div>
+      </div>
 
-      <div id="desk-panel-manual" class="desk-tab-panel" role="tabpanel" aria-labelledby="tab-desk-manual">
-      <section class="card wide" id="sec-env">
-        <h2>
-          Environment
-          <span
-            class="help-tip"
-              title="Edits the repo .env on disk. Secrets stay unchanged if you leave the field blank. Presets write official testnet/mainnet endpoint URLs."
-            >?</span
-          >
-        </h2>
-        <div class="btn-row env-actions">
-          <button type="button" class="btn primary" id="btn-env-preset-testnet">
-            Apply testnet preset
-          </button>
-          <button type="button" class="btn" id="btn-env-preset-mainnet">Apply mainnet preset</button>
-          <button type="button" class="btn" id="btn-env-example-key">Example Strategy API key</button>
-          <button type="button" class="btn primary" id="btn-env-save">Save .env</button>
-          <button type="button" class="btn ghost" id="btn-env-reload">Reload</button>
-          <button type="button" class="btn" id="btn-env-view-raw">View raw .env</button>
-        </div>
-        <div id="env-form-root" class="env-form-root"></div>
-        <p class="hint" id="env-path-hint"></p>
-        <p class="hint" id="env-msg"></p>
-        <div id="env-raw-panel" class="env-raw-panel" hidden>
-          <p class="hint env-raw-warning">
-            Exact file on disk (includes secrets). Use only on a trusted screen; do not share screenshots.
-          </p>
-          <pre id="env-raw-content" class="env-raw-pre"></pre>
-        </div>
-      </section>
+      <p class="text-xs text-ink-muted mt-2" id="wallet-select-hint" role="status"></p>
+      <p class="text-xs text-ink-subtle mt-1" id="wallet-session-status"></p>
 
-      <section class="card wide" id="sec-wallet">
-        <h2>
-          <span class="step-num">1</span> Twilight wallet
-          <span
-            class="help-tip"
-            title="Select a wallet + passphrase for this browser session. Faucet/Manage/ZkOS actions reuse it. If NYKS_WALLET_ID / NYKS_WALLET_PASSPHRASE exist in .env, you can leave fields blank."
-            >?</span
-          >
-        </h2>
-        <div class="card-inset">
-          <h3 class="subhead">
-            Twilight network mode
-            <span
-              class="help-tip"
-              title="Applies the testnet/mainnet preset into .env (LCD/RPC/ZkOS/relayer/faucet + NETWORK_TYPE). Restart dashboard if you change env outside the UI."
-              >?</span
-            >
-          </h3>
-          <div class="btn-row">
-            <label class="field" style="min-width: 220px">
-              <span>Network</span>
-              <select id="twilight-network-mode">
-                <option value="testnet">testnet</option>
-                <option value="mainnet">mainnet</option>
-              </select>
-            </label>
-            <button type="button" class="btn primary" id="btn-apply-twilight-network">Apply network</button>
-          </div>
-          <p class="hint small" id="twilight-network-hint"></p>
-        </div>
-        <div class="card-inset" id="wallet-auth-logged-in" hidden>
-          <h3 class="subhead">Wallet session</h3>
-          <p class="hint" id="wallet-auth-logged-in-label"></p>
-          <div class="btn-row">
-            <button type="button" class="btn ghost" id="btn-wallet-logout">Log out</button>
-          </div>
-        </div>
-        <div id="wallet-auth-logged-out">
-          <div class="field-grid">
-            <label class="field wide">
-              <span>Wallet for session</span>
-              <select id="wallet-select">
-                <option value="">— Load wallets —</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>Wallet encryption password</span>
-              <input
-                type="password"
-                id="wallet-pass"
-                autocomplete="off"
-                placeholder="or NYKS_WALLET_PASSPHRASE in .env"
-              />
-            </label>
-          </div>
-          <div class="btn-row">
-            <button type="button" class="btn primary" id="btn-wallet-refresh">Refresh list</button>
-            <label class="field" style="min-width: 230px">
-              <span>Login persistence</span>
-              <select id="wallet-session-mode">
-                <option value="session">Session-only</option>
-                <option value="remember">Remember on this device</option>
-              </select>
-            </label>
-            <button type="button" class="btn" id="btn-wallet-login">Log in</button>
-          </div>
-        </div>
-        <p class="hint" id="wallet-select-hint" role="status"></p>
-        <p class="hint small" id="wallet-session-status"></p>
-
-        <div class="wallet-real-trading card-inset">
-          <label class="inline-check wallet-real-toggle">
-            <input type="checkbox" id="chk-confirm-real-trading" />
-            <span
-              >I understand the risk — <strong>allow real trading</strong> (live CEX / relayer orders). Writes
-              <code>CONFIRM_REAL_TRADING=YES</code> to <code>.env</code> and applies immediately.</span
-            >
-          </label>
-          <p class="hint small" id="confirm-real-trading-hint"></p>
-        </div>
-
-        <h3 class="subhead">Create wallet</h3>
-        <div class="field-grid">
-          <label class="field">
-            <span>New wallet ID</span>
-            <input type="text" id="relayer-create-id" autocomplete="off" />
-          </label>
-          <label class="field">
-            <span>Password</span>
-            <input type="password" id="relayer-create-pass" autocomplete="off" />
-          </label>
-          <label class="field wide">
-            <span>Optional BTC address</span>
-            <input type="text" id="relayer-create-btc" autocomplete="off" placeholder="bc1q…" />
-          </label>
-        </div>
-        <div class="btn-row">
-          <button type="button" class="btn primary" id="btn-relayer-create">Create wallet</button>
-        </div>
-        <pre class="out out-compact" id="wallet-create-out" hidden></pre>
-      </section>
-
-      <section class="card wide" id="sec-faucet">
-        <h2>
-          <span class="step-num">2</span> Testnet faucet (NYKS)
-          <span
-            class="help-tip"
-            title="Requires FAUCET_BASE_URL (testnet). Uses relayer-cli wallet balance to discover recipient, then calls faucet HTTP (POST /faucet) and optionally test sats mint (POST /mint). Set NETWORK_TYPE=testnet + matching endpoints."
-            >?</span
-          >
-        </h2>
-        <p class="muted small" id="faucet-hint">Testnet only. Configure faucet in <code>.env</code>.</p>
-        <p class="muted small" id="faucet-arch-hint" hidden></p>
-        <p class="muted small" id="faucet-env-line" aria-live="polite"></p>
-        <h3 class="subhead">Wallet for faucet</h3>
-        <div class="field-grid">
-          <label class="field wide">
-            <span>Wallet</span>
-            <select id="faucet-wallet-select">
-              <option value="">— Select wallet —</option>
-            </select>
-          </label>
-        </div>
-        <p class="hint small" id="faucet-creds-hint">
-          List updates when you refresh wallets in step 1. Changing the session wallet also updates this dropdown.
-        </p>
-        <label class="inline-check">
-          <input type="checkbox" id="chk-faucet-sats" />
-          <span>Also request test on-chain sats (<code>POST /mint</code>, testnet only)</span>
+      <div class="card-inset mt-3">
+        <label class="flex items-start gap-2 cursor-pointer">
+          <input type="checkbox" id="chk-confirm-real-trading" class="mt-0.5" />
+          <span class="text-xs text-ink-muted">Allow <strong class="text-warn">real trading</strong> — live CEX / relayer orders. Writes <code>CONFIRM_REAL_TRADING=YES</code>.</span>
         </label>
-        <p class="hint small" id="faucet-mint-warning" hidden>
-          Test sats mint is disabled or unreliable until <code>NETWORK_TYPE=testnet</code> and the testnet faucet URL are
-          set on the server — see the line above. Apply the testnet preset, save <code>.env</code>, reload env, restart the
-          dashboard.
-        </p>
-        <div class="btn-row">
-          <button type="button" class="btn primary" id="btn-faucet">Request from faucet (HTTP)</button>
-          <button type="button" class="btn" id="btn-faucet-cli" title="Runs relayer-cli wallet faucet — SDK get_test_tokens">
-            CLI: wallet faucet (SDK)
-          </button>
-          <button type="button" class="btn ghost" id="btn-faucet-verify-wallet">
-            Verify faucet target wallet
-          </button>
-          <button type="button" class="btn ghost" id="btn-faucet-check-tx">
-            Check tx status
-          </button>
-        </div>
-        <p class="hint small" id="faucet-wallet-verify-line"></p>
-        <pre class="out out-compact" id="faucet-tx-status-out" hidden></pre>
-        <p class="hint small" id="faucet-cli-hint" hidden></p>
-        <div id="faucet-result-summary" class="faucet-result-summary" hidden aria-live="polite">
-          <p id="faucet-step-nyks" class="faucet-step"></p>
-          <p id="faucet-step-mint" class="faucet-step"></p>
-        </div>
-        <p id="faucet-post-mint-hint" class="hint small faucet-post-mint-hint" hidden></p>
-        <pre class="out out-compact" id="faucet-out" hidden></pre>
-      </section>
+      </div>
+    </section>
 
-      <section class="card wide" id="sec-manage">
-        <h2>
-          <span class="step-num">3</span> Manage wallet
-          <span
-            class="help-tip"
-            title="Runs relayer-cli read/session commands. Uses the wallet+password from Twilight wallet (step 1) unless NYKS_WALLET_* are set in .env."
-            >?</span
-          >
-        </h2>
-        <h3 class="subhead">Wallet for these commands</h3>
-        <div class="field-grid">
-          <label class="field wide">
-            <span>Wallet</span>
-            <select id="manage-wallet-select">
-              <option value="">— Select wallet —</option>
-            </select>
-          </label>
+    <!-- Faucet -->
+    <section class="card" id="sec-faucet">
+      <div class="section-heading">
+        <h2>Faucet <span class="help-tip" data-tip="Testnet only. Request NYKS coins and test sats.">?</span></h2>
+      </div>
+      <div class="space-y-3">
+        <div class="field">
+          <label class="label">Faucet wallet</label>
+          <select id="faucet-wallet-select" class="input">
+            <option value="">— Select wallet —</option>
+          </select>
         </div>
-        <p class="hint small" id="manage-creds-hint">
-          Dropdown stays in sync with step 1 when you refresh wallets or change the session wallet.
-        </p>
-        <div class="btn-row">
-          <button type="button" class="btn" id="btn-manage-balance">Balance</button>
-          <button type="button" class="btn" id="btn-manage-accounts">Accounts</button>
-          <button type="button" class="btn" id="btn-manage-info">Info</button>
-          <button type="button" class="btn" id="btn-manage-unlock">Unlock session</button>
-          <button type="button" class="btn" id="btn-manage-lock">Lock session</button>
-          <button type="button" class="btn" id="btn-manage-sync-nonce">Sync nonce</button>
+        <div class="field">
+          <label class="label">Password</label>
+          <input type="password" id="faucet-wallet-pass" class="input" autocomplete="off" />
         </div>
-        <label class="inline-check">
-          <input type="checkbox" id="relayer-onchain-only" />
-          <span>Accounts: on-chain only</span>
+        <div class="flex gap-2 flex-wrap">
+          <button type="button" class="btn btn-sm" id="btn-faucet-verify">Verify address</button>
+          <button type="button" class="btn-primary btn-sm" id="btn-faucet-http">Request NYKS (HTTP)</button>
+          <button type="button" class="btn btn-sm" id="btn-faucet-cli">Request NYKS (CLI)</button>
+        </div>
+        <label class="flex items-center gap-2 text-xs text-ink-muted cursor-pointer">
+          <input type="checkbox" id="chk-faucet-test-sats" />
+          Also mint test sats
         </label>
-        <pre class="out" id="manage-out"></pre>
-      </section>
+        <div class="flex gap-2">
+          <button type="button" class="btn btn-sm" id="btn-faucet-tx-status">Check tx status</button>
+          <button type="button" class="btn btn-sm" id="btn-faucet-balance">Check balance</button>
+        </div>
+        <pre class="out" id="faucet-out">—</pre>
+      </div>
+    </section>
 
-      <section class="card wide" id="sec-zkos">
-        <h2>
-          <span class="step-num">3b</span> ZkOS account (Twilight)
-          <span
-            class="help-tip"
-            title="Twilight real trades require a funded ZkOS index. Fund moves sats into ZkOS (often creates index 0). TWILIGHT_ACCOUNT_INDEX is the default for real opens. Memo = order-locked; close/cancel then unlock, then rotate (zkaccount transfer)."
-            >?</span
-          >
-        </h2>
-        <p class="muted small">Fund, list, pick index.</p>
-        <div class="card-inset zkos-allow-block">
-          <label class="inline-check wallet-real-toggle">
-            <input type="checkbox" id="chk-allow-dashboard-zk" />
-            <span
-              >Allow ZkOS actions
-              <span
-                class="help-tip"
-                title="Enables fund/transfer/withdraw/rotate by writing RELAYER_ALLOW_DASHBOARD_ZK=YES into .env and applying immediately."
-                >?</span
-              ></span
-            >
+  </div><!-- /grid -->
+
+  <!-- Wallet management -->
+  <section class="card" id="sec-manage">
+    <div class="section-heading">
+      <h2><span class="text-gold font-display">2</span> Wallet management</h2>
+      <div class="flex gap-2 flex-wrap">
+        <select id="manage-wallet-select" class="input text-xs max-w-[200px]">
+          <option value="">— wallet —</option>
+        </select>
+        <input type="password" id="manage-wallet-pass" class="input text-xs max-w-[180px]" placeholder="password" autocomplete="off" />
+        <button type="button" class="btn btn-sm" id="btn-manage-balance">Balance</button>
+        <button type="button" class="btn btn-sm" id="btn-manage-accounts">Accounts</button>
+        <button type="button" class="btn btn-sm" id="btn-manage-info">Info</button>
+        <button type="button" class="btn btn-sm" id="btn-manage-unlock">Unlock</button>
+        <button type="button" class="btn btn-sm" id="btn-manage-lock">Lock</button>
+        <button type="button" class="btn btn-sm" id="btn-manage-sync-nonce">Sync nonce</button>
+      </div>
+    </div>
+    <pre class="out" id="manage-out">—</pre>
+  </section>
+
+  <!-- ZkOS accounts -->
+  <section class="card" id="sec-zkos">
+    <div class="section-heading">
+      <h2><span class="text-gold font-display">3</span> ZkOS accounts <span class="help-tip" data-tip="Privacy-preserving trading accounts on the ZkOS layer. Each account holds one trade at a time.">?</span></h2>
+    </div>
+
+    <div class="card-inset mb-3">
+      <label class="flex items-start gap-2 cursor-pointer">
+        <input type="checkbox" id="chk-zkos-allow" class="mt-0.5" />
+        <span class="text-xs text-ink-muted">Allow ZkOS actions (fund, transfer, withdraw). Writes <code>RELAYER_ALLOW_DASHBOARD_ZK=YES</code>.</span>
+      </label>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+      <!-- Fund new account -->
+      <div class="card-inset space-y-2">
+        <p class="label">Fund new account</p>
+        <p class="text-xs text-ink-muted" id="zkos-balance-hint"></p>
+        <div class="flex gap-2">
+          <input type="number" id="zkos-fund-amount" class="input" placeholder="sats" min="1000" step="1000" />
+          <button type="button" class="btn-primary btn-sm" id="btn-zkos-fund">Fund</button>
+        </div>
+        <input type="range" id="zkos-fund-pct" min="0" max="100" value="50" class="w-full accent-gold" />
+        <p class="text-xs text-ink-muted" id="zkos-fund-pct-label">50%</p>
+      </div>
+
+      <!-- Account inspector -->
+      <div class="card-inset space-y-2">
+        <p class="label">Account inspector</p>
+        <div class="flex gap-2">
+          <button type="button" class="btn btn-sm" id="btn-zkos-list">List accounts</button>
+          <select id="zkos-account-select" class="input text-xs">
+            <option value="">— select —</option>
+          </select>
+        </div>
+        <p class="text-xs text-ink-muted" id="zkos-account-banner"></p>
+        <div class="flex flex-wrap gap-1" id="zkos-inspector-actions" hidden>
+          <button type="button" class="btn btn-sm" id="btn-zkos-use-for-strategy">Use for strategy</button>
+          <button type="button" class="btn btn-sm" id="btn-zkos-close">Close order</button>
+          <button type="button" class="btn btn-sm" id="btn-zkos-cancel">Cancel order</button>
+          <button type="button" class="btn btn-sm" id="btn-zkos-unlock-close">Unlock close</button>
+          <button type="button" class="btn btn-sm" id="btn-zkos-unlock-failed">Unlock failed</button>
+          <button type="button" class="btn btn-sm" id="btn-zkos-withdraw">Withdraw</button>
+          <button type="button" class="btn btn-sm" id="btn-zkos-rotate">Rotate</button>
+        </div>
+        <pre class="out text-xs" id="zkos-inspector-out"></pre>
+      </div>
+
+    </div>
+
+    <!-- Transfer / split -->
+    <div class="card-inset mt-3">
+      <p class="label mb-2">Transfer / split</p>
+      <div class="flex gap-2 flex-wrap items-end">
+        <div class="field">
+          <label class="label">From index</label>
+          <input type="number" id="zkos-transfer-from" class="input w-20" placeholder="0" min="0" />
+        </div>
+        <div class="field">
+          <label class="label">Transfer %</label>
+          <input type="range" id="zkos-transfer-pct" min="1" max="100" value="100" class="accent-gold" />
+        </div>
+        <div class="field">
+          <label class="label">Split targets (optional)</label>
+          <input type="text" id="zkos-split-targets" class="input" placeholder="e.g. 30%,30%,40%" />
+        </div>
+        <button type="button" class="btn-primary btn-sm" id="btn-zkos-transfer">Transfer</button>
+      </div>
+      <p class="text-xs text-ink-muted mt-1" id="zkos-transfer-hint"></p>
+    </div>
+
+    <pre class="out mt-3" id="zkos-out">—</pre>
+  </section>
+
+  <!-- CEX keys -->
+  <section class="card" id="sec-keys">
+    <div class="section-heading">
+      <h2><span class="text-gold font-display">4</span> CEX API keys</h2>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="card-inset space-y-2">
+        <p class="label">Binance</p>
+        <input type="password" id="binance-api-key" class="input" placeholder="API key" autocomplete="off" />
+        <input type="password" id="binance-api-secret" class="input" placeholder="API secret" autocomplete="off" />
+        <label class="flex items-center gap-2 text-xs text-ink-muted">
+          <input type="checkbox" id="binance-testnet" />
+          Use Binance testnet
+        </label>
+        <div class="flex gap-2">
+          <button type="button" class="btn btn-sm" id="btn-test-binance-key">Test connection</button>
+        </div>
+        <p class="text-xs" id="binance-key-status"></p>
+      </div>
+      <div class="card-inset space-y-2">
+        <p class="label">Bybit</p>
+        <input type="password" id="bybit-api-key" class="input" placeholder="API key" autocomplete="off" />
+        <input type="password" id="bybit-api-secret" class="input" placeholder="API secret" autocomplete="off" />
+        <label class="flex items-center gap-2 text-xs text-ink-muted">
+          <input type="checkbox" id="bybit-testnet" />
+          Use Bybit testnet
+        </label>
+        <div class="flex gap-2">
+          <button type="button" class="btn btn-sm" id="btn-test-bybit-key">Test connection</button>
+        </div>
+        <p class="text-xs" id="bybit-key-status"></p>
+      </div>
+    </div>
+    <div class="flex gap-2 mt-3">
+      <button type="button" class="btn-primary btn-sm" id="btn-save-exchange">Save keys</button>
+      <button type="button" class="btn btn-sm" id="btn-reload-exchange">Load saved</button>
+    </div>
+    <p class="text-xs text-ink-muted mt-2">Keys are stored in <code>data/exchange-keys.json</code> for the monitor. To use the same keys in the bot, click <strong>Autofill from dashboard</strong> in Bot tab → Section 1, then Save.</p>
+    <pre class="out mt-3" id="keys-out">—</pre>
+  </section>
+
+</div><!-- /desk-panel-manual -->
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB 2 · TRADE (was "Automated")                                    -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div id="desk-panel-automated" role="tabpanel" aria-labelledby="tab-desk-automated" hidden>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+    <!-- Strategies browser -->
+    <section class="card" id="sec-strategies">
+      <div class="section-heading">
+        <h2>Best strategies <span class="help-tip" data-tip="Strategies from the Strategy API ranked by APY. Click a row to open trade.">?</span></h2>
+        <div class="flex gap-2 flex-wrap items-center">
+          <label class="flex items-center gap-1 text-xs text-ink-muted">
+            <input type="checkbox" id="chk-strategies-profitable" checked />
+            Profitable only
           </label>
-          <p class="hint small" id="zkos-allow-hint"></p>
+          <label class="flex items-center gap-1 text-xs text-ink-muted">
+            <input type="checkbox" id="chk-strategies-binance" />
+            Binance
+          </label>
+          <label class="flex items-center gap-1 text-xs text-ink-muted">
+            <input type="checkbox" id="chk-strategies-bybit" />
+            Bybit
+          </label>
+          <label class="flex items-center gap-1 text-xs text-ink-muted">
+            <input type="checkbox" id="chk-strategies-auto-refresh" />
+            Auto
+          </label>
+          <button type="button" class="btn btn-sm" id="btn-strategies-refresh">Refresh</button>
         </div>
-        <p class="hint small" id="zkos-gate-line"></p>
-        <div class="card-inset zkos-active-account-panel">
-          <h3 class="subhead">
-            Real trade index
-            <span class="help-tip" title="Default is TWILIGHT_ACCOUNT_INDEX. Real opens prefer Coin (not Memo).">?</span>
-          </h3>
-          <p class="zkos-trade-account-line" id="zkos-trade-account-line"></p>
-          <p class="hint small" id="zkos-trade-account-sub"></p>
-          <div class="field-grid">
-            <label class="field wide">
-              <span>Account</span>
-              <select id="zkos-active-account-select" aria-describedby="zkos-trade-account-hint">
-                <option value="">— List ZkOS accounts (below) to load rows —</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>Index</span>
-              <input type="number" id="zkos-strategy-index" min="0" step="1" placeholder="0" />
-            </label>
-          </div>
-          <div class="btn-row">
-            <button type="button" class="btn primary" id="btn-zkos-save-index">Save default index</button>
-          </div>
-          <p class="hint small" hidden></p>
-          <p class="hint small" id="zkos-trade-account-hint">
-            <span class="help-tip" title="Memo = order-locked. After close/cancel: unlock, then rotate via transfer to a fresh address.">?</span>
-          </p>
-        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Strategy</th>
+              <th>APY%</th>
+              <th>Est. daily</th>
+              <th>Category</th>
+              <th>CEX leg</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="strategies-table-body"></tbody>
+        </table>
+      </div>
+      <p class="text-xs text-ink-muted mt-2" id="strategies-last-updated"></p>
+    </section>
 
-        <div class="card-inset" id="zkos-account-inspector">
-          <h3 class="subhead">
-            Account actions
-            <span class="help-tip" title="Select an account above to enable action buttons.">?</span>
-          </h3>
-          <p class="hint small" id="zkos-inspector-gates"></p>
-          <p id="zkos-inspector-empty" class="muted small">Select an account.</p>
-          <div id="zkos-inspector-body" hidden>
-            <div class="table-wrap">
-              <table class="data" id="zkos-inspector-fields"></table>
-            </div>
-            <label class="inline-check wide">
-              <input type="checkbox" id="zkos-inspector-raw-toggle" />
-              <span>Raw JSON</span>
-            </label>
-            <pre class="out out-compact" id="zkos-inspector-raw" hidden></pre>
-            <label class="inline-check wide">
-              <input type="checkbox" id="zkos-insp-close-nowait" />
-              <span>Close: <code>--no-wait</code></span>
-            </label>
-            <p class="hint small">
-              Gates.
-              <span
-                class="help-tip"
-                title="Close/Cancel need RELAYER_ALLOW_DASHBOARD_ORDERS=YES. Unlock-close/unlock-failed need either ORDERS=YES or ZK=YES. Rotate/Withdraw need ZK=YES."
-                >?</span
-              >
-            </p>
-            <div class="field-grid">
-              <label class="field wide">
-                <span>Withdraw sats</span>
-                <input
-                  type="text"
-                  id="zkos-insp-withdraw-sats"
-                  inputmode="numeric"
-                  placeholder="e.g. 10000"
-                  autocomplete="off"
-                />
+    <!-- Monitor settings -->
+    <section class="card" id="sec-agent">
+      <div class="section-heading">
+        <h2>Monitor <span class="help-tip" data-tip="Autonomous strategy loop. Runs strategies on an interval, auto-sizes trades, and manages positions.">?</span></h2>
+        <div class="flex gap-2">
+          <button type="button" class="btn-ok btn-sm" id="btn-monitor-start">Start</button>
+          <button type="button" class="btn-danger btn-sm" id="btn-monitor-stop">Stop</button>
+          <button type="button" class="btn btn-sm" id="btn-monitor-run-once">Run once</button>
+        </div>
+      </div>
+      <p class="text-xs mb-3" id="monitor-status-line">—</p>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="field">
+          <label class="label">Poll interval (s)</label>
+          <input type="number" id="agent-poll-interval" class="input" placeholder="30" min="5" step="5" />
+        </div>
+        <div class="field">
+          <label class="label">Strategy limit</label>
+          <input type="number" id="agent-strategy-limit" class="input" placeholder="5" min="1" step="1" />
+        </div>
+        <div class="field">
+          <label class="label">Execution mode</label>
+          <select id="agent-execution-mode" class="input">
+            <option value="simulation">Simulation</option>
+            <option value="real">Real</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="label">Max open positions</label>
+          <input type="number" id="agent-max-positions" class="input" placeholder="3" min="1" />
+        </div>
+        <div class="field">
+          <label class="label">Max leverage</label>
+          <input type="number" id="agent-max-leverage" class="input" placeholder="5" min="1" step="0.5" />
+        </div>
+        <div class="field">
+          <label class="label">Daily loss stop ($)</label>
+          <input type="number" id="agent-daily-loss-stop" class="input" placeholder="50" min="0" />
+        </div>
+      </div>
+      <details class="mt-3">
+        <summary class="text-xs text-ink-muted cursor-pointer hover:text-ink">Auto-close rules</summary>
+        <div class="grid grid-cols-2 gap-3 mt-2">
+          <div class="field">
+            <label class="label">Close on loss %</label>
+            <input type="number" id="agent-close-loss-pct" class="input" placeholder="e.g. 5" />
+          </div>
+          <div class="field">
+            <label class="label">Close on profit %</label>
+            <input type="number" id="agent-close-profit-pct" class="input" placeholder="e.g. 10" />
+          </div>
+          <div class="field">
+            <label class="label">Close after (min)</label>
+            <input type="number" id="agent-close-max-minutes" class="input" placeholder="e.g. 120" />
+          </div>
+          <div class="field">
+            <label class="label col-span-2">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="agent-close-apy-zero" />
+                <span class="text-ink-muted">Close when APY ≤ 0%</span>
               </label>
-              <div class="field" style="align-self: end">
-                <span class="muted small">From list row</span>
-                <button type="button" class="btn small ghost" id="btn-zkos-insp-withdraw-fill" disabled>
-                  Fill listed balance
-                </button>
-              </div>
-            </div>
-            <p class="hint small">
-              To on-chain SATS.
-              <span
-                class="help-tip"
-                title="Withdraw moves sats from this ZkOS index back to the same wallet’s spendable on-chain SATS balance (not NYKS token). Refresh balance after."
-                >?</span
-              >
-            </p>
-            <div class="btn-row" id="zkos-inspector-actions">
-              <button type="button" class="btn small" id="btn-zkos-insp-use-index" disabled>Use for strategy index</button>
-              <button type="button" class="btn small danger" id="btn-zkos-insp-close" disabled>Close trade</button>
-              <button type="button" class="btn small danger" id="btn-zkos-insp-cancel" disabled>Cancel trade</button>
-              <button type="button" class="btn small" id="btn-zkos-insp-unlock-close" disabled>Unlock settled close</button>
-              <button type="button" class="btn small ghost" id="btn-zkos-insp-unlock-failed" disabled>Unlock failed order</button>
-              <button type="button" class="btn small" id="btn-zkos-insp-withdraw" disabled>Withdraw to wallet</button>
-              <button type="button" class="btn small primary danger" id="btn-zkos-insp-rotate" disabled>
-                Rotate (100% transfer)
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div class="zkos-balance-row">
-          <p class="zkos-balance-line">
-            Loaded NYKS wallet — on-chain BTC (SATS) for <code>zkaccount fund</code>:
-            <strong id="zkos-balance-value">—</strong>
-            <span id="zkos-balance-nyks" class="muted"></span>
-            <span id="zkos-balance-pending" class="muted"></span>
-          </p>
-          <button type="button" class="btn small" id="btn-zkos-refresh-balance">Refresh balance</button>
-        </div>
-        <p class="hint small" id="zkos-balance-parse-hint" hidden></p>
-        <div class="field-grid">
-          <label class="field wide zkos-pct-field">
-            <span
-              >Fund % <span id="zkos-fund-pct-readout" class="muted">0%</span></span
-            >
-            <input type="range" id="zkos-fund-pct" min="0" max="100" value="0" disabled />
-          </label>
-          <p class="hint small zkos-fee-reserve-hint" hidden></p>
-          <label class="field">
-            <span>Fund (sats)</span>
-            <input type="text" id="zkos-fund-sats" inputmode="numeric" placeholder="e.g. 10000" />
-          </label>
-        </div>
-        <h3 class="subhead">Transfer / rotate ZkOS balance</h3>
-        <p class="hint small">
-          100% = rotate.
-          <span
-            class="help-tip"
-            title="100% runs zkaccount transfer (moves all funds into a NEW ZkOS account). <100% runs split (creates TWO new accounts). Destination is always new account(s)."
-            >?</span
-          >
-        </p>
-        <div class="field-grid">
-          <label class="field wide">
-            <span>From account</span>
-            <select id="zkos-transfer-from" aria-describedby="zkos-transfer-hint-text"></select>
-          </label>
-          <label class="field wide">
-            <span>To</span>
-            <select id="zkos-transfer-to">
-              <option value="new">New ZkOS account(s) (relayer-created)</option>
-            </select>
-          </label>
-          <label class="field wide zkos-pct-field">
-            <span
-              >Amount <span id="zkos-transfer-amount-readout" class="muted">0 / 0 sats</span>
-              <span class="muted small">(100% = full transfer)</span></span
-            >
-            <input type="range" id="zkos-transfer-pct" min="0" max="100" value="100" disabled />
-          </label>
-        </div>
-        <p class="hint small" id="zkos-transfer-hint-text">
-          To is always new account(s).
-          <span class="help-tip" title="Run List ZkOS accounts after success to see new indices.">?</span>
-        </p>
-        <div class="btn-row">
-          <button type="button" class="btn primary" id="btn-zkos-accounts">List ZkOS accounts</button>
-          <button type="button" class="btn primary danger" id="btn-zkos-fund">Fund account</button>
-          <button type="button" class="btn danger" id="btn-zkos-transfer">Transfer / split</button>
-        </div>
-        <pre class="out" id="zkos-out"></pre>
-      </section>
-
-      <section class="card wide" id="sec-keys">
-        <h2>
-          <span class="step-num">4</span> Binance / Bybit API keys
-          <span
-            class="help-tip"
-            title="Stored server-side in data/exchange-keys.json (0600). Leave blank to keep existing. Used by trade desk + monitor key sync."
-            >?</span
-          >
-        </h2>
-        <p class="hint" id="exchange-status"></p>
-        <p class="hint" id="exchange-last-status"></p>
-        <div class="field-grid">
-          <label class="field wide">
-            <span>Binance API key</span>
-            <input type="password" id="binance-api-key" autocomplete="off" placeholder="unchanged if empty" />
-          </label>
-          <label class="field wide">
-            <span>Binance API secret</span>
-            <input type="password" id="binance-api-secret" autocomplete="off" />
-          </label>
-          <label class="inline-check wide">
-            <input type="checkbox" id="binance-testnet" />
-            <span>Binance testnet</span>
-          </label>
-          <label class="field wide">
-            <span>Bybit API key</span>
-            <input type="password" id="bybit-api-key" autocomplete="off" />
-          </label>
-          <label class="field wide">
-            <span>Bybit API secret</span>
-            <input type="password" id="bybit-api-secret" autocomplete="off" />
-          </label>
-          <label class="inline-check wide">
-            <input type="checkbox" id="bybit-testnet" />
-            <span>Bybit testnet</span>
-          </label>
-        </div>
-        <div class="btn-row">
-          <button type="button" class="btn primary" id="btn-save-exchange">Save keys</button>
-          <button type="button" class="btn" id="btn-test-binance-key">Test Binance key</button>
-          <button type="button" class="btn" id="btn-test-bybit-key">Test Bybit key</button>
-          <button type="button" class="btn ghost" id="btn-reload-exchange">Reload status</button>
-        </div>
-      </section>
-
-      <section class="card wide" id="sec-strategies">
-        <div class="card-head">
-          <h2><span class="step-num">5</span> Latest best strategies</h2>
-          <div class="btn-row">
-            <button type="button" class="btn small" id="btn-strategies-refresh">Refresh</button>
-            <label class="inline-check">
-              <input type="checkbox" id="chk-strategies-auto" checked />
-              <span>Every 15s</span>
-            </label>
-            <span class="muted small strategy-cex-filter-sep" aria-hidden="true">|</span>
-            <span class="muted small strategy-cex-filter-label">CEX:</span>
-            <label class="inline-check">
-              <input type="checkbox" id="chk-strategies-cex-binance" />
-              <span>Binance</span>
-            </label>
-            <label class="inline-check">
-              <input type="checkbox" id="chk-strategies-cex-bybit" />
-              <span>Bybit</span>
             </label>
           </div>
         </div>
-        <p class="muted" id="strategies-meta"></p>
-        <p class="hint small" id="strategies-filter-hint" hidden></p>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Name</th>
-                <th>Category</th>
-                <th>Risk</th>
-                <th>APY %</th>
-                <th>Est. daily $</th>
-                <th>Twilight</th>
-                <th>Run</th>
-              </tr>
-            </thead>
-            <tbody id="strategies-body"></tbody>
-          </table>
-        </div>
-        <p class="hint small">
-          Sim = no live orders. Real = live legs (requires keys + Allow real trading).
-          <span class="help-tip" title="Real uses YAML execution.mode + CONFIRM_REAL_TRADING gate. Twilight leg requires funded ZkOS index; CEX legs require keys.">?</span>
-        </p>
-      </section>
+      </details>
+      <div class="flex gap-2 mt-3">
+        <button type="button" class="btn-primary btn-sm" id="btn-agent-settings-save">Save settings</button>
+        <button type="button" class="btn btn-sm" id="btn-agent-settings-reload">Reload</button>
+      </div>
+      <p class="text-xs text-ink-muted mt-1" id="agent-settings-msg"></p>
+    </section>
 
-      <section class="card wide" id="sec-agent-pnl">
-        <div class="card-head">
-          <h2>
-            Agent P&amp;L (positions)
-            <span class="help-tip" title="Open/closed positions are tracked in the on-disk ledger. Use Refresh to sync view.">?</span>
-          </h2>
-          <button type="button" class="btn small" id="btn-pnl-refresh">Refresh</button>
-        </div>
-        <p class="muted" id="pnl-note-line" hidden></p>
-        <dl class="stats stats-cols" id="pnl-stats"></dl>
-        <h3 class="subhead">Open</h3>
+  </div><!-- /grid -->
+
+  <!-- Unified P&L (single source of truth) -->
+  <section class="card" id="sec-agent-pnl">
+    <div class="section-heading">
+      <h2>Positions &amp; P&amp;L</h2>
+      <div class="flex gap-2">
+        <button type="button" class="btn btn-sm" id="btn-pnl-refresh-manual">Refresh</button>
+        <button type="button" class="btn btn-sm" id="btn-pnl-refresh-automated" hidden>Refresh auto</button>
+      </div>
+    </div>
+    <p class="text-xs text-ink-muted mb-3" id="pnl-note-line-manual" hidden></p>
+    <dl class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4" id="pnl-stats-manual"></dl>
+
+    <div class="space-y-4">
+      <div>
+        <p class="label mb-2">Open positions</p>
         <div class="table-wrap">
-          <table>
+          <table class="data-table">
             <thead>
               <tr>
                 <th>Strategy</th>
                 <th>Mode</th>
                 <th>Entry BTC</th>
                 <th>Unreal $</th>
-                <th>Close (venues + ledger)</th>
+                <th>Action</th>
               </tr>
             </thead>
-            <tbody id="positions-open-body"></tbody>
+            <tbody id="positions-open-body-manual"></tbody>
           </table>
         </div>
-        <h3 class="subhead">Closed</h3>
+      </div>
+      <div>
+        <p class="label mb-2">Closed positions</p>
         <div class="table-wrap">
-          <table>
+          <table class="data-table">
             <thead>
               <tr>
                 <th>Closed</th>
@@ -674,919 +571,513 @@
                 <th>Realized $</th>
               </tr>
             </thead>
-            <tbody id="positions-closed-body"></tbody>
+            <tbody id="positions-closed-body-manual"></tbody>
           </table>
         </div>
-      </section>
+      </div>
+    </div>
 
-      <section class="card wide" id="sec-trade-desk">
-        <div class="card-head">
-          <h2><span class="step-num">7</span> Trades &amp; venue snapshot</h2>
-          <div class="btn-row">
-            <button type="button" class="btn small" id="btn-trade-desk-refresh">Refresh</button>
-            <label class="inline-check">
-              <input type="checkbox" id="chk-trade-desk-auto" checked />
-              <span>Every 20s</span>
-            </label>
-          </div>
-        </div>
-        <p class="muted" id="trade-desk-meta"></p>
-        <p class="muted small">
-          History + live venue snapshots.
-          <span class="help-tip" title="Rows are persisted agent runs. Live blocks query Binance/Bybit via ccxt and Twilight via order account-summary (TWILIGHT_ACCOUNT_INDEX).">?</span>
-        </p>
-        <h3 class="subhead">Agent executions (pending / open / history)</h3>
-        <div class="table-wrap table-wrap-scroll">
-          <table class="trade-desk-table">
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Strategy</th>
-                <th>Logical trade</th>
-                <th>Mode</th>
-                <th>Ledger</th>
-                <th>Twilight</th>
-                <th>CEX</th>
-              </tr>
-            </thead>
-            <tbody id="trade-desk-exec-body"></tbody>
+    <!-- Hidden slots for app.js compat (automated + agentic mirror same IDs) -->
+    <dl id="pnl-stats-automated" hidden></dl>
+    <p id="pnl-note-line-automated" hidden></p>
+    <table hidden><tbody id="positions-open-body-automated"></tbody></table>
+    <table hidden><tbody id="positions-closed-body-automated"></tbody></table>
+    <dl id="pnl-stats-agentic" hidden></dl>
+    <p id="pnl-note-line-agentic" hidden></p>
+    <table hidden><tbody id="positions-open-body-agentic"></tbody></table>
+    <table hidden><tbody id="positions-closed-body-agentic"></tbody></table>
+  </section>
+
+  <!-- Trade desk: live venue snapshots -->
+  <section class="card" id="sec-trade-desk">
+    <div class="section-heading">
+      <h2>Trade desk <span class="help-tip" data-tip="Live positions from Binance, Bybit, and Twilight. Refreshed every 20s when enabled.">?</span></h2>
+      <div class="flex gap-2 items-center">
+        <label class="flex items-center gap-1 text-xs text-ink-muted">
+          <input type="checkbox" id="chk-trade-desk-auto-refresh" />
+          Auto-refresh
+        </label>
+        <button type="button" class="btn btn-sm" id="btn-trade-desk-refresh">Refresh</button>
+      </div>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div>
+        <p class="label mb-1">Agent executions</p>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Time</th><th>Strategy</th><th>APY</th><th>Mode</th></tr></thead>
+            <tbody id="trade-desk-agent-body"></tbody>
           </table>
         </div>
-        <h3 class="subhead">Binance (live)</h3>
+      </div>
+      <div>
+        <p class="label mb-1">Binance positions</p>
         <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Symbol</th>
-                <th>Side</th>
-                <th>Notional</th>
-                <th>Unreal PnL</th>
-                <th>Entry</th>
-              </tr>
-            </thead>
+          <table class="data-table">
+            <thead><tr><th>Symbol</th><th>Side</th><th>Notional</th><th>PnL</th></tr></thead>
             <tbody id="trade-desk-binance-body"></tbody>
           </table>
         </div>
-        <h3 class="subhead">Bybit (live)</h3>
+      </div>
+      <div>
+        <p class="label mb-1">Bybit positions</p>
         <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Symbol</th>
-                <th>Side</th>
-                <th>Notional</th>
-                <th>Unreal PnL</th>
-                <th>Entry</th>
-              </tr>
-            </thead>
+          <table class="data-table">
+            <thead><tr><th>Symbol</th><th>Side</th><th>Notional</th><th>PnL</th></tr></thead>
             <tbody id="trade-desk-bybit-body"></tbody>
           </table>
         </div>
-        <h3 class="subhead">Twilight account (live)</h3>
-        <pre class="out out-compact" id="trade-desk-twilight-out">Loading…</pre>
-      </section>
+      </div>
+    </div>
+    <details class="mt-4">
+      <summary class="text-xs text-ink-muted cursor-pointer hover:text-ink">Twilight account orders</summary>
+      <div class="table-wrap mt-2">
+        <table class="data-table">
+          <thead><tr><th>Index</th><th>Balance</th><th>State</th><th>Order type</th><th>On-chain</th></tr></thead>
+          <tbody id="trade-desk-twilight-body"></tbody>
+        </table>
+      </div>
+    </details>
+  </section>
+
+  <!-- Advanced / danger zone (collapsed) -->
+  <details id="sec-advanced" class="card">
+    <summary class="text-sm font-medium text-ink-muted cursor-pointer hover:text-warn flex items-center gap-2">
+      <span class="text-warn">⚠</span> Advanced / Danger zone
+    </summary>
+    <div class="mt-4 space-y-4">
+
+      <div class="card-inset">
+        <p class="label mb-2">Simulation</p>
+        <button type="button" class="btn btn-sm" id="btn-sim-once">Run simulation once</button>
+        <pre class="out mt-2" id="sim-out">—</pre>
       </div>
 
-      <div
-        id="desk-panel-automated"
-        class="desk-tab-panel"
-        role="tabpanel"
-        aria-labelledby="tab-desk-automated"
-        hidden
-      >
-        <section class="card wide" id="sec-agent">
-          <h2>Automated trading</h2>
-          <p class="muted small">
-            Auto-polls Strategy API and runs one strategy per tick.
-            <span
-              class="help-tip"
-              title="One monitor loop at a time. Uses configs/agent.monitor.yaml + .env. Real mode requires Allow real trading (CONFIRM_REAL_TRADING=YES). ZkOS auto-pick prefers Coin (non-Memo)."
-              >?</span
-            >
-          </p>
-          <div class="card-inset automated-panel-intro">
-            <h3 class="subhead">Run once without starting the loop</h3>
-            <p class="muted small">
-              Runs one poll cycle (uses saved YAML/mode).
-              <span class="help-tip" title="Forced simulation is in Advanced → Run simulation once.">?</span>
-            </p>
-            <div class="btn-row">
-              <button type="button" class="btn" id="btn-agent-run-once">Run one poll cycle</button>
+      <div class="card-inset">
+        <p class="label mb-2">YAML config editor</p>
+        <div class="flex gap-2 mb-2">
+          <button type="button" class="btn btn-sm" id="btn-reload-config">Reload</button>
+          <button type="button" class="btn-primary btn-sm" id="btn-save-config">Save config</button>
+        </div>
+        <textarea id="config-yaml-editor" class="input font-mono text-xs h-48 resize-y" spellcheck="false"></textarea>
+      </div>
+
+      <div class="card-inset">
+        <p class="label mb-2">Portfolio</p>
+        <button type="button" class="btn-danger btn-sm" id="btn-reset-portfolio">Reset portfolio snapshot</button>
+        <div class="table-wrap mt-2">
+          <table class="data-table" id="tx-table">
+            <thead><tr><th>Time</th><th>Strategy</th><th>APY%</th><th>Notional</th><th>Mode</th></tr></thead>
+            <tbody id="tx-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card-inset">
+        <p class="label mb-2">Recent logs</p>
+        <button type="button" class="btn btn-sm" id="btn-logs-refresh">Refresh logs</button>
+        <pre class="out-tall mt-2" id="logs-out">—</pre>
+      </div>
+
+      <div class="card-inset">
+        <p class="label mb-2 text-danger">Direct relayer operations</p>
+        <p class="text-xs text-warn mb-3">These bypass all safety guards and write directly to ZkOS or open/close orders.</p>
+        <label class="flex items-start gap-2 mb-3 cursor-pointer">
+          <input type="checkbox" id="chk-allow-dashboard-orders" class="mt-0.5" />
+          <span class="text-xs text-ink-muted">Allow order operations. Writes <code>RELAYER_ALLOW_DASHBOARD_ORDERS=YES</code>.</span>
+        </label>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="space-y-2">
+            <p class="text-xs font-medium text-ink-muted">Open trade</p>
+            <input type="text" id="relayer-open-side" class="input" placeholder="LONG or SHORT" />
+            <input type="number" id="relayer-open-entry" class="input" placeholder="entry price USD" />
+            <input type="number" id="relayer-open-leverage" class="input" placeholder="leverage" value="3" />
+            <input type="number" id="relayer-open-index" class="input" placeholder="account index" value="0" />
+            <button type="button" class="btn-primary btn-sm w-full" id="btn-relayer-open">Open</button>
+          </div>
+          <div class="space-y-2">
+            <p class="text-xs font-medium text-ink-muted">Close / cancel</p>
+            <input type="number" id="relayer-close-index" class="input" placeholder="account index" value="0" />
+            <div class="flex gap-2">
+              <button type="button" class="btn-danger btn-sm flex-1" id="btn-relayer-close">Close</button>
+              <button type="button" class="btn btn-sm flex-1" id="btn-relayer-cancel">Cancel</button>
             </div>
-            <pre class="out out-compact" id="agent-run-once-out" hidden></pre>
-            <h3 class="subhead">Setup checklist</h3>
-            <p class="muted small">Shortcuts:</p>
-            <ul class="automated-checklist muted small">
-              <li><code>STRATEGY_API_KEY</code> — <a href="#sec-env" class="desk-link-manual" data-sec="sec-env">Environment</a></li>
-              <li>CEX keys for real legs — <a href="#sec-keys" class="desk-link-manual" data-sec="sec-keys">CEX keys</a></li>
-              <li>Funded ZkOS index — <a href="#sec-zkos" class="desk-link-manual" data-sec="sec-zkos">ZkOS</a></li>
-              <li>Session wallet + allow real for <strong>real</strong> — <a href="#sec-wallet" class="desk-link-manual" data-sec="sec-wallet">Wallet</a></li>
-              <li>Ledger &amp; venue view — <a href="#sec-agent-pnl-auto">P&amp;L</a> (this tab),
-                <a href="#sec-trade-desk" class="desk-link-manual" data-sec="sec-trade-desk">Trades</a></li>
-              <li>Raw YAML / sim / logs — <a href="#sec-advanced">Advanced</a> (summary block below)</li>
-            </ul>
+            <div class="flex gap-2">
+              <button type="button" class="btn btn-sm flex-1" id="btn-relayer-unlock-close">Unlock close</button>
+              <button type="button" class="btn btn-sm flex-1" id="btn-relayer-unlock-failed">Unlock failed</button>
+            </div>
           </div>
-          <div class="field-grid">
-            <label class="field">
-              <span>Poll interval (ms)</span>
-              <input type="text" id="agent-poll" inputmode="numeric" />
-            </label>
-            <label class="field">
-              <span>Strategy limit</span>
-              <input type="text" id="agent-limit" inputmode="numeric" />
-            </label>
-            <label class="inline-check wide">
-              <input type="checkbox" id="agent-profitable" />
-              <span>Only profitable strategies</span>
-            </label>
-            <label class="field">
-              <span>Execution mode</span>
-              <select id="agent-mode">
-                <option value="simulation">simulation</option>
-                <option value="real">real</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>Max total notional USD</span>
-              <input type="text" id="agent-max-total" inputmode="decimal" />
-            </label>
-            <label class="field">
-              <span>Max concurrent trades</span>
-              <input type="text" id="agent-max-concurrent" inputmode="numeric" />
-            </label>
-            <label class="field">
-              <span>Max daily loss USD</span>
-              <input type="text" id="agent-max-daily" inputmode="decimal" />
-            </label>
-            <label class="field">
-              <span>Max notional USD per strategy</span>
-              <input type="text" id="agent-max-per-strategy" inputmode="decimal" placeholder="0 = no cap" />
-            </label>
-            <label class="field">
-              <span>CEX filter (strategy leg)</span>
-              <select id="agent-cex-venue">
-                <option value="any">Any</option>
-                <option value="binance">Binance only</option>
-                <option value="bybit">Bybit only</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>Strategy API risk param</span>
-              <select id="agent-strategy-risk">
-                <option value="any">Any (omit query)</option>
-                <option value="VERY_LOW">VERY_LOW</option>
-                <option value="LOW">LOW</option>
-                <option value="MEDIUM">MEDIUM</option>
-                <option value="HIGH">HIGH</option>
-              </select>
-            </label>
-            <label class="field wide">
-              <span>Risk allowlist (optional, comma-separated)</span>
-              <input type="text" id="agent-risk-allowlist" placeholder="e.g. LOW,MEDIUM — filters API rows" autocomplete="off" />
-            </label>
-            <label class="inline-check wide">
-              <input type="checkbox" id="chk-auto-pick-zkos" checked />
-              <span>Auto-pick ZkOS Coin index for real opens (override Memo default)</span>
-            </label>
-            <label class="inline-check wide">
-              <input type="checkbox" id="chk-persist-zk-index" checked />
-              <span>After close + rotate, persist new <code>TWILIGHT_ACCOUNT_INDEX</code> to <code>.env</code></span>
-            </label>
-            <label class="field">
-              <span>Max Twilight open-trade attempts (1–5)</span>
-              <input type="text" id="agent-open-trade-max-zk" inputmode="numeric" placeholder="3" title="Re-list ZkOS accounts and try the next Coin index after recoverable errors when auto-pick is on." />
-            </label>
-            <p class="muted small wide" style="grid-column: 1 / -1">
-              <strong>Auto-close open positions</strong> (position ledger): the server re-evaluates about every 45s
-              (<code>POSITION_AUTO_CLOSE_INTERVAL_MS</code> optional, minimum 15s). Rules apply to <strong>all</strong> open
-              rows (existing and new). Loss/profit compare unrealized $ to the trade’s initial notional at open
-              (<code>notionalUsd</code>, with fallbacks for older rows). <strong>Real</strong> closes need the same
-              wallet, relayer, and CEX gates as manual <strong>Close</strong> in P&amp;L — otherwise auto-close logs an
-              error and leaves the row open. Leave a field empty to disable that rule.
-              Independently of those fields, a position is auto-closed when its strategy APY is no longer positive
-              (<= 0%).
-              Values are written to <code>configs/agent.monitor.yaml</code> under <code>positionAutoClose</code> when you
-              click <strong>Save agent settings</strong> (the Advanced YAML editor is refreshed from disk afterward so it
-              does not overwrite them with stale text).
-            </p>
-            <label class="field">
-              <span>Close if loss ≥ % of initial notional</span>
-              <input type="text" id="agent-auto-close-loss-pct" inputmode="decimal" placeholder="e.g. 5" />
-            </label>
-            <label class="field">
-              <span>Close if profit ≥ % of initial notional</span>
-              <input type="text" id="agent-auto-close-profit-pct" inputmode="decimal" placeholder="e.g. 10" />
-            </label>
-            <label class="field">
-              <span>Close if open ≥ minutes</span>
-              <input type="text" id="agent-auto-close-max-min" inputmode="numeric" placeholder="e.g. 120" />
-            </label>
-            <label class="inline-check wide">
-              <input type="checkbox" id="agent-auto-close-apy-toggle" checked />
-              <span>Close when strategy APY is non-positive (<= 0%)</span>
-            </label>
+        </div>
+        <pre class="out mt-3" id="relayer-orders-out">—</pre>
+      </div>
+
+      <div class="card-inset">
+        <p class="label mb-2">Wallet import</p>
+        <textarea id="relayer-mnemonic" class="input font-mono text-xs h-16 resize-none" placeholder="24-word mnemonic phrase" spellcheck="false"></textarea>
+        <div class="flex gap-2 mt-2">
+          <input type="text" id="relayer-import-wallet-name" class="input" placeholder="wallet name" />
+          <button type="button" class="btn btn-sm" id="btn-relayer-mnemonic-import">Import</button>
+        </div>
+        <pre class="out mt-2" id="relayer-import-out">—</pre>
+      </div>
+
+      <div class="card-inset">
+        <div class="flex gap-2">
+          <button type="button" class="btn btn-sm" id="btn-relayer-ping">Ping relayer</button>
+          <button type="button" class="btn btn-sm" id="btn-relayer-market-stats">Market stats</button>
+        </div>
+        <pre class="out mt-2" id="relayer-misc-out">—</pre>
+      </div>
+
+    </div>
+  </details>
+
+</div><!-- /desk-panel-automated -->
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB 3 · BOT (was "Agentic")                                        -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div id="desk-panel-agentic" role="tabpanel" aria-labelledby="tab-desk-agentic" hidden>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+    <!-- Bot configuration params -->
+    <section class="card" id="sec-agentic-bot-console">
+      <div class="section-heading">
+        <h2><span class="text-gold font-display">1</span> Bot configuration</h2>
+      </div>
+
+      <div class="space-y-3">
+        <div class="grid grid-cols-2 gap-3">
+          <div class="field">
+            <label class="label"><code>PAPER</code> (1=paper, 0=live)</label>
+            <input type="text" id="tb-param-PAPER" class="input" autocomplete="off" />
           </div>
-          <div class="btn-row">
-            <button type="button" class="btn primary" id="btn-save-agent">Save agent settings</button>
-            <button type="button" class="btn ghost" id="btn-reload-agent">Reload</button>
+          <div class="field">
+            <label class="label"><code>LIVE_TRADING_CONFIRMED</code></label>
+            <input type="text" id="tb-param-LIVE_TRADING_CONFIRMED" class="input" autocomplete="off" />
           </div>
-          <p class="hint" id="agent-settings-msg"></p>
-
-          <h3 class="subhead">Monitor</h3>
-          <p class="muted small">
-            <strong>Start monitor</strong> runs the first poll immediately, then repeats on the poll interval until <strong>Stop</strong>.
-            Only one monitor is active for this dashboard server.
-          </p>
-          <div class="status-line" id="status-line">Loading…</div>
-          <div class="btn-row">
-            <button type="button" class="btn primary" id="btn-start">Start monitor</button>
-            <button type="button" class="btn danger" id="btn-stop">Stop monitor</button>
+          <div class="field">
+            <label class="label"><code>CLAUDE_CONSULT_DISABLED</code></label>
+            <input type="text" id="tb-param-CLAUDE_CONSULT_DISABLED" class="input" autocomplete="off" />
           </div>
-          <p class="hint" id="last-cycle"></p>
-          <pre class="out out-compact monitor-error-detail" id="monitor-error-detail" hidden></pre>
-        </section>
-
-        <section class="card wide" id="sec-agent-pnl-auto" aria-label="Agent P&amp;L (same data as Manual tab)">
-          <div class="card-head">
-            <h2>Agent P&amp;L (positions)</h2>
-            <button type="button" class="btn small" id="btn-pnl-refresh-auto">Refresh</button>
+          <div class="field">
+            <label class="label"><code>MAX_OPEN_POSITIONS</code></label>
+            <input type="text" id="tb-param-MAX_OPEN_POSITIONS" class="input" inputmode="numeric" autocomplete="off" />
           </div>
-          <p class="muted" id="pnl-note-line-auto"></p>
-          <dl class="stats stats-cols" id="pnl-stats-auto"></dl>
-          <h3 class="subhead">Open (unrealized)</h3>
-          <p class="muted small">Click a row (not <strong>Close</strong>) for leg notionals, direction, leverage, and venue snapshot.</p>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Strategy</th>
-                  <th>Mode</th>
-                  <th>Entry BTC</th>
-                  <th>Unreal $</th>
-                  <th>Close (venues + ledger)</th>
-                </tr>
-              </thead>
-              <tbody id="positions-open-body-auto"></tbody>
-            </table>
+          <div class="field">
+            <label class="label"><code>MAX_NOTIONAL_USD</code></label>
+            <input type="text" id="tb-param-MAX_NOTIONAL_USD_PER_INTENT" class="input" inputmode="decimal" autocomplete="off" />
           </div>
-          <h3 class="subhead">Closed (realized)</h3>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Closed</th>
-                  <th>Strategy</th>
-                  <th>Realized $</th>
-                </tr>
-              </thead>
-              <tbody id="positions-closed-body-auto"></tbody>
-            </table>
+          <div class="field">
+            <label class="label"><code>MAX_LEVERAGE</code></label>
+            <input type="text" id="tb-param-MAX_LEVERAGE" class="input" inputmode="decimal" autocomplete="off" />
           </div>
-        </section>
+          <div class="field">
+            <label class="label"><code>DAILY_LOSS_STOP_USD</code></label>
+            <input type="text" id="tb-param-DAILY_LOSS_STOP_USD" class="input" inputmode="decimal" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label class="label"><code>MIN_BALANCE_USD_PER_VENUE</code></label>
+            <input type="text" id="tb-param-MIN_BALANCE_USD_PER_VENUE" class="input" inputmode="decimal" autocomplete="off" />
+          </div>
+        </div>
 
-        <details class="card wide advanced-block" id="sec-advanced">
-          <summary>Advanced — agent monitor, YAML, logs, relayer orders</summary>
-          <div class="advanced-inner">
-            <section class="card inner-card">
-              <h2>Simulation</h2>
-              <button type="button" class="btn" id="btn-sim-once">Run simulation once</button>
-              <pre class="out" id="sim-out"></pre>
-            </section>
+        <div class="divider"></div>
 
-            <section class="card inner-card wide">
-              <div class="card-head">
-                <h2>Configuration</h2>
-                <button type="button" class="btn small" id="btn-reload-config">Reload</button>
-              </div>
-              <textarea id="config-yaml" spellcheck="false" rows="14"></textarea>
-              <button type="button" class="btn primary" id="btn-save-config">Save YAML</button>
-              <p class="hint" id="config-msg"></p>
-            </section>
+        <div class="grid grid-cols-1 gap-3">
+          <div class="field">
+            <label class="label"><code>NYKS_WALLET_ID</code></label>
+            <input type="text" id="tb-param-NYKS_WALLET_ID" class="input" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label class="label"><code>NYKS_WALLET_PASSPHRASE</code></label>
+            <input type="password" id="tb-param-NYKS_WALLET_PASSPHRASE" class="input" autocomplete="off" />
+          </div>
+        </div>
 
-            <section class="card inner-card">
-              <h2>Portfolio reset</h2>
-              <p class="muted">
-                Clears in-memory snapshot only.
-                <span class="help-tip" title="Does not delete the on-disk position ledger shown in Manual → Agent P&L.">?</span>
-              </p>
-              <button type="button" class="btn ghost small" id="btn-reset-portfolio">Reset portfolio state</button>
-            </section>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="field">
+            <label class="label"><code>BYBIT_API_KEY</code></label>
+            <input type="password" id="tb-param-BYBIT_API_KEY" class="input" autocomplete="off" />
+            <span class="text-xs" id="tb-param-status-BYBIT_API_KEY"></span>
+          </div>
+          <div class="field">
+            <label class="label"><code>BYBIT_API_SECRET</code></label>
+            <input type="password" id="tb-param-BYBIT_API_SECRET" class="input" autocomplete="off" />
+            <span class="text-xs" id="tb-param-status-BYBIT_API_SECRET"></span>
+          </div>
+          <div class="field">
+            <label class="label"><code>BYBIT_TESTNET</code> (1=testnet)</label>
+            <input type="text" id="tb-param-BYBIT_TESTNET" class="input" autocomplete="off" placeholder="0" />
+          </div>
+        </div>
 
-            <section class="card inner-card wide">
-              <div class="card-head">
-                <h2>Transactions (agent)</h2>
-                <button type="button" class="btn small" id="btn-refresh-tx">Refresh</button>
-              </div>
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Time</th>
-                      <th>Strategy</th>
-                      <th>APY</th>
-                      <th>Notional</th>
-                      <th>Est. daily $</th>
-                      <th>Mode</th>
-                    </tr>
-                  </thead>
-                  <tbody id="tx-body"></tbody>
-                </table>
-              </div>
-            </section>
-
-            <section class="card inner-card wide">
-              <div class="card-head">
-                <h2>Recent logs</h2>
-                <button type="button" class="btn small" id="btn-refresh-logs">Refresh</button>
-              </div>
-              <pre class="log" id="log-box"></pre>
-            </section>
-
-            <section class="card inner-card wide relayer-section">
-              <div class="card-head">
-                <h2>
-                  Relayer — ZkOS &amp; orders
-                  <span class="help-tip" title="Danger zone: direct relayer-cli actions. Gates: RELAYER_ALLOW_DASHBOARD_ZK for ZkOS (fund/transfer/rotate/withdraw), RELAYER_ALLOW_DASHBOARD_ORDERS for open/close/cancel. Unlock-close/unlock-failed works with either gate.">?</span>
-                </h2>
-                <button type="button" class="btn small" id="btn-relayer-meta">Meta</button>
-              </div>
-              <p class="muted" id="relayer-meta-line"></p>
-              <p class="hint" id="relayer-binary-hint"></p>
-              <p class="hint" id="relayer-gate-hint" hidden></p>
-              <div class="field-grid">
-                <label class="field">
-                  <span>Fund (sats)</span>
-                  <input type="text" id="relayer-fund-sats" inputmode="numeric" placeholder="e.g. 10000" />
-                </label>
-                <label class="field">
-                  <span>Rotate from index</span>
-                  <input type="text" id="relayer-zk-from" inputmode="numeric" placeholder="0" />
-                </label>
-              </div>
-              <div class="btn-row">
-                <button type="button" class="btn danger" id="btn-relayer-fund">Zk fund</button>
-                <button type="button" class="btn danger" id="btn-relayer-transfer">Zk transfer</button>
-              </div>
-              <div class="field-grid">
-                <label class="field">
-                  <span>Open · account index</span>
-                  <input type="text" id="relayer-ot-acc" inputmode="numeric" />
-                </label>
-                <label class="field">
-                  <span>Side</span>
-                  <select id="relayer-ot-side">
-                    <option value="long">long</option>
-                    <option value="short">short</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Entry USD</span>
-                  <input type="text" id="relayer-ot-price" inputmode="numeric" />
-                </label>
-                <label class="field">
-                  <span>Leverage</span>
-                  <input type="text" id="relayer-ot-lev" inputmode="numeric" />
-                </label>
-                <label class="inline-check">
-                  <input type="checkbox" id="relayer-ot-nowait" />
-                  <span>--no-wait</span>
-                </label>
-              </div>
-              <div class="btn-row">
-                <button type="button" class="btn danger" id="btn-relayer-open">Open trade</button>
-              </div>
-              <div class="field-grid">
-                <label class="field">
-                  <span>Close / cancel · index</span>
-                  <input type="text" id="relayer-close-acc" inputmode="numeric" />
-                </label>
-                <label class="inline-check">
-                  <input type="checkbox" id="relayer-close-nowait" />
-                  <span>Close --no-wait</span>
-                </label>
-              </div>
-              <div class="btn-row">
-                <button type="button" class="btn danger" id="btn-relayer-close">Close trade</button>
-                <button type="button" class="btn danger" id="btn-relayer-cancel">Cancel trade</button>
-              </div>
-              <p class="hint small">
-                Memo? Unlock it.
-                <span class="help-tip" title="After settlement (or liquidation), index remains Memo until unlock-close-order. If submit failed, use unlock-failed-order. Use the same index field above.">?</span>
-              </p>
-              <div class="btn-row">
-                <button type="button" class="btn" id="btn-relayer-unlock-close">Unlock settled close</button>
-                <button type="button" class="btn ghost" id="btn-relayer-unlock-failed">Unlock failed order</button>
-              </div>
-              <h3 class="subhead">Import mnemonic</h3>
-              <label class="field wide">
-                <span>Mnemonic</span>
-                <textarea id="relayer-import-mnemonic" rows="2" spellcheck="false"></textarea>
-              </label>
-              <div class="btn-row">
-                <button type="button" class="btn" id="btn-relayer-import">Import</button>
-                <button type="button" class="btn" id="btn-relayer-ping">Ping (price)</button>
-                <button type="button" class="btn" id="btn-relayer-mstats">Market stats</button>
-              </div>
-              <pre class="out relayer-out" id="relayer-out"></pre>
-            </section>
+        <details>
+          <summary class="text-xs text-ink-muted cursor-pointer hover:text-ink">Binance keys + Claude CLI (optional)</summary>
+          <div class="grid grid-cols-2 gap-3 mt-2">
+            <div class="field">
+              <label class="label"><code>BINANCE_API_KEY</code></label>
+              <input type="password" id="tb-param-BINANCE_API_KEY" class="input" autocomplete="off" />
+              <span class="text-xs" id="tb-param-status-BINANCE_API_KEY"></span>
+            </div>
+            <div class="field">
+              <label class="label"><code>BINANCE_API_SECRET</code></label>
+              <input type="password" id="tb-param-BINANCE_API_SECRET" class="input" autocomplete="off" />
+              <span class="text-xs" id="tb-param-status-BINANCE_API_SECRET"></span>
+            </div>
+            <div class="field col-span-2">
+              <label class="label"><code>CLAUDE_CLI_PATH</code> (optional)</label>
+              <input type="text" id="tb-param-CLAUDE_CLI_PATH" class="input" autocomplete="off" placeholder="/usr/bin/claude" />
+            </div>
           </div>
         </details>
+
+        <div class="flex flex-wrap gap-2">
+          <button type="button" class="btn btn-sm" id="btn-tb-params-autofill">Autofill from dashboard</button>
+          <button type="button" class="btn btn-sm" id="btn-tb-live-preset">Live preset</button>
+          <button type="button" class="btn btn-sm" id="btn-tb-consult-on">Consult ON</button>
+          <button type="button" class="btn btn-sm" id="btn-tb-consult-off">Consult OFF</button>
+          <button type="button" class="btn-primary btn-sm" id="btn-tb-params-save">Save</button>
+        </div>
+        <pre class="out text-xs" id="tb-live-readiness-out">Checking readiness…</pre>
+        <p class="text-xs text-ink-muted" id="tb-params-msg"></p>
       </div>
+    </section>
 
-      <div
-        id="desk-panel-agentic"
-        class="desk-tab-panel"
-        role="tabpanel"
-        aria-labelledby="tab-desk-agentic"
-        hidden
-      >
-        <section class="card wide" id="sec-agentic-bot-console">
-          <div class="card-head">
-            <h2>
-              <span class="step-num">1</span> twilight-bot console
-              <span
-                class="help-tip"
-                title="Operator panel for twilight-bot API: inspect trades/positions/ticks, close positions, toggle kill-switch, and send paper/live intents."
-                >?</span
-              >
-            </h2>
-          </div>
+    <!-- Bot runtime -->
+    <section class="card" id="sec-agentic-process">
+      <div class="section-heading">
+        <h2><span class="text-gold font-display">2</span> Bot runtime</h2>
+        <div class="flex gap-2 flex-wrap">
+          <button type="button" class="btn-primary btn-sm" id="btn-agentic-spin-up">Spin up</button>
+          <button type="button" class="btn btn-sm" id="btn-agentic-process-status">Status</button>
+          <button type="button" class="btn btn-sm" id="btn-agentic-refresh-health">Health</button>
+          <button type="button" class="btn-danger btn-sm" id="btn-agentic-process-stop">Stop</button>
+        </div>
+      </div>
+      <p class="text-xs mb-1" id="agentic-process-line">—</p>
+      <p class="text-xs text-ink-muted mb-3" id="agentic-runtime-line">Loading…</p>
 
-          <details class="card-inset" open>
-            <summary class="subhead">
-              Required parameters
-              <span
-                class="help-tip"
-                title="These are the core twilight-bot env controls for live execution and risk limits."
-                >?</span
-              >
-            </summary>
-            <div class="field-grid">
-              <label class="field">
-                <span><code>PAPER</code> (1=paper, 0=live)</span>
-                <input type="text" id="tb-param-PAPER" autocomplete="off" />
-              </label>
-              <label class="field">
-                <span><code>LIVE_TRADING_CONFIRMED</code></span>
-                <input type="text" id="tb-param-LIVE_TRADING_CONFIRMED" autocomplete="off" />
-              </label>
-              <label class="field">
-                <span><code>CLAUDE_CONSULT_DISABLED</code> (0/1)</span>
-                <input type="text" id="tb-param-CLAUDE_CONSULT_DISABLED" autocomplete="off" />
-              </label>
-              <label class="field">
-                <span><code>CLAUDE_CLI_PATH</code> (optional)</span>
-                <input type="text" id="tb-param-CLAUDE_CLI_PATH" autocomplete="off" placeholder="/usr/bin/claude" />
-              </label>
-              <label class="field">
-                <span><code>MAX_OPEN_POSITIONS</code></span>
-                <input type="text" id="tb-param-MAX_OPEN_POSITIONS" inputmode="numeric" autocomplete="off" />
-              </label>
-              <label class="field">
-                <span><code>MAX_NOTIONAL_USD_PER_INTENT</code></span>
-                <input type="text" id="tb-param-MAX_NOTIONAL_USD_PER_INTENT" inputmode="decimal" autocomplete="off" />
-              </label>
-              <label class="field">
-                <span><code>MAX_LEVERAGE</code></span>
-                <input type="text" id="tb-param-MAX_LEVERAGE" inputmode="decimal" autocomplete="off" />
-              </label>
-              <label class="field">
-                <span><code>DAILY_LOSS_STOP_USD</code></span>
-                <input type="text" id="tb-param-DAILY_LOSS_STOP_USD" inputmode="decimal" autocomplete="off" />
-              </label>
-              <label class="field">
-                <span><code>MIN_BALANCE_USD_PER_VENUE</code></span>
-                <input type="text" id="tb-param-MIN_BALANCE_USD_PER_VENUE" inputmode="decimal" autocomplete="off" />
-              </label>
-              <label class="field">
-                <span><code>NYKS_WALLET_ID</code></span>
-                <input type="text" id="tb-param-NYKS_WALLET_ID" autocomplete="off" />
-              </label>
-              <label class="field">
-                <span><code>NYKS_WALLET_PASSPHRASE</code></span>
-                <input type="password" id="tb-param-NYKS_WALLET_PASSPHRASE" autocomplete="off" />
-              </label>
-              <label class="field">
-                <span><code>BINANCE_API_KEY</code></span>
-                <input type="password" id="tb-param-BINANCE_API_KEY" autocomplete="off" />
-                <span class="hint small" id="tb-param-status-BINANCE_API_KEY"></span>
-              </label>
-              <label class="field">
-                <span><code>BINANCE_API_SECRET</code></span>
-                <input type="password" id="tb-param-BINANCE_API_SECRET" autocomplete="off" />
-                <span class="hint small" id="tb-param-status-BINANCE_API_SECRET"></span>
-              </label>
-              <label class="field">
-                <span><code>BYBIT_API_KEY</code></span>
-                <input type="password" id="tb-param-BYBIT_API_KEY" autocomplete="off" />
-                <span class="hint small" id="tb-param-status-BYBIT_API_KEY"></span>
-              </label>
-              <label class="field">
-                <span><code>BYBIT_API_SECRET</code></span>
-                <input type="password" id="tb-param-BYBIT_API_SECRET" autocomplete="off" />
-                <span class="hint small" id="tb-param-status-BYBIT_API_SECRET"></span>
-              </label>
-            </div>
-            <div class="btn-row">
-              <button type="button" class="btn" id="btn-tb-params-autofill">Autofill from dashboard</button>
-              <button type="button" class="btn small" id="btn-tb-live-preset">Set live mode preset</button>
-              <button type="button" class="btn small" id="btn-tb-consult-on">Consult ON</button>
-              <button type="button" class="btn small" id="btn-tb-consult-off">Consult OFF</button>
-              <button type="button" class="btn primary" id="btn-tb-params-save">Save bot params</button>
-            </div>
-            <pre class="out out-compact" id="tb-live-readiness-out">Checking live-mode readiness…</pre>
-            <p class="hint small" id="tb-params-msg">Saved to repo <code>.env</code> (used by twilight-bot process).</p>
-          </details>
+      <!-- Command runner -->
+      <div class="flex gap-2 mb-2">
+        <input type="text" id="agentic-process-command" class="input text-xs font-mono flex-1" autocomplete="off" placeholder="help, status, positions, strategies profitable=true limit=10" />
+        <button type="button" class="btn btn-sm" id="btn-agentic-process-command-send">Send</button>
+      </div>
+      <div class="flex flex-wrap gap-1 mb-3">
+        <button type="button" class="btn btn-sm" data-agentic-cmd="help">help</button>
+        <button type="button" class="btn btn-sm" data-agentic-cmd="status">status</button>
+        <button type="button" class="btn btn-sm" data-agentic-cmd="health">health</button>
+        <button type="button" class="btn btn-sm" data-agentic-cmd="positions">positions</button>
+        <button type="button" class="btn btn-sm" data-agentic-cmd="strategies profitable=true limit=10">strategies</button>
+        <button type="button" class="btn btn-sm" data-agentic-cmd="caps">caps</button>
+        <button type="button" class="btn btn-sm" data-agentic-cmd="trades limit=25">trades</button>
+        <button type="button" class="btn btn-sm btn-danger" data-agentic-cmd="kill on">kill on</button>
+        <button type="button" class="btn btn-sm btn-ok" data-agentic-cmd="kill off">kill off</button>
+      </div>
+      <pre class="out text-xs mb-3" id="agentic-process-command-out">—</pre>
 
-          <div class="agentic-bot-grid">
-            <section class="card-inset">
-              <h3 class="subhead">
-                Strategies
-                <span class="help-tip" title="Queries /strategies with profitable + limit. Venue filter is applied client-side to returned rows.">?</span>
-              </h3>
-              <div class="field-grid">
-                <label class="inline-check">
-                  <input type="checkbox" id="agentic-bot-strategies-profitable" checked />
-                  <span>Only profitable</span>
-                </label>
-                <label class="field">
-                  <span>Limit</span>
-                  <input type="number" id="agentic-bot-strategies-limit" min="1" step="1" placeholder="20" />
-                </label>
-              </div>
-              <div class="field-grid">
-                <label class="inline-check">
-                  <input type="checkbox" id="agentic-bot-strategies-venue-binance" />
-                  <span>Binance leg</span>
-                </label>
-                <label class="inline-check">
-                  <input type="checkbox" id="agentic-bot-strategies-venue-bybit" />
-                  <span>Bybit leg</span>
-                </label>
-              </div>
-              <div class="btn-row">
-                <button type="button" class="btn small" id="btn-agentic-bot-strategies-refresh">Refresh</button>
-              </div>
-              <pre class="out out-compact" id="agentic-bot-strategies-out">Loading…</pre>
-            </section>
+      <!-- Bot output log -->
+      <p class="label mb-1">Recent bot output</p>
+      <pre class="out-tall" id="agentic-process-logs-out">Loading…</pre>
 
-            <section class="card-inset">
-              <h3 class="subhead">
-                Trades
-                <span class="help-tip" title="Queries /trades (intent history; supports FTS search and limit).">?</span>
-              </h3>
-              <div class="field-grid">
-                <label class="field">
-                  <span>Search</span>
-                  <input type="text" id="agentic-bot-trades-q" autocomplete="off" placeholder="FTS query (optional)" />
-                </label>
-                <label class="field">
-                  <span>Limit</span>
-                  <input type="number" id="agentic-bot-trades-limit" min="1" step="1" placeholder="25" />
-                </label>
-              </div>
-              <div class="btn-row">
-                <button type="button" class="btn small" id="btn-agentic-bot-trades-refresh">Refresh</button>
-              </div>
-              <pre class="out out-compact" id="agentic-bot-trades-out">Loading…</pre>
-            </section>
-
-            <section class="card-inset">
-              <h3 class="subhead">
-                Positions
-                <span class="help-tip" title="Queries /positions and allows closing one position by id via /positions/:id/close.">?</span>
-              </h3>
-              <p class="hint small">
-                Auto-exit also runs server-side: if a position strategy APY turns non-positive (<= 0%), the dashboard requests a close.
-              </p>
-              <div class="field-grid">
-                <label class="field">
-                  <span>Venue filter</span>
-                  <div class="field-grid">
-                    <label class="inline-check">
-                      <input type="checkbox" id="agentic-bot-positions-venue-twilight" />
-                      <span>twilight</span>
-                    </label>
-                    <label class="inline-check">
-                      <input type="checkbox" id="agentic-bot-positions-venue-binance" />
-                      <span>binance</span>
-                    </label>
-                    <label class="inline-check">
-                      <input type="checkbox" id="agentic-bot-positions-venue-bybit" />
-                      <span>bybit</span>
-                    </label>
-                  </div>
-                </label>
-                <label class="field">
-                  <span>Close id</span>
-                  <input
-                    type="text"
-                    id="agentic-bot-close-position-id"
-                    autocomplete="off"
-                    placeholder="e.g. twi_0"
-                  />
-                </label>
-              </div>
-              <div class="btn-row">
-                <button type="button" class="btn small" id="btn-agentic-bot-positions-refresh">Refresh</button>
-                <button type="button" class="btn danger" id="btn-agentic-bot-close-position">Close</button>
-              </div>
-              <pre class="out out-compact" id="agentic-bot-positions-out">Loading…</pre>
-            </section>
-
-            <details class="card-inset">
-              <summary class="subhead">
-                Advanced (optional)
-                <span
-                  class="help-tip"
-                  title="Optional diagnostics and manual override tools. Not required for normal autonomous operation."
-                  >?</span
-                >
-              </summary>
-              <h3 class="subhead">
-                Ticks
-                <span class="help-tip" title="Queries scheduler ticks via /ticks; filter by skill/status and limit.">?</span>
-              </h3>
-              <div class="field-grid">
-                <label class="field">
-                  <span>Skill</span>
-                  <input type="text" id="agentic-bot-ticks-skill" autocomplete="off" placeholder="e.g. funding-arb" />
-                </label>
-                <label class="field">
-                  <span>Status</span>
-                  <input type="text" id="agentic-bot-ticks-status" autocomplete="off" placeholder="noop, intent, timeout…" />
-                </label>
-                <label class="field">
-                  <span>Limit</span>
-                  <input type="number" id="agentic-bot-ticks-limit" min="1" step="1" placeholder="100" />
-                </label>
-              </div>
-              <div class="btn-row">
-                <button type="button" class="btn small" id="btn-agentic-bot-ticks-refresh">Refresh</button>
-              </div>
-              <pre class="out out-compact" id="agentic-bot-ticks-out">Loading…</pre>
-
-              <h3 class="subhead">
-                Operator intent
-                <span
-                  class="help-tip"
-                  title="Sends /trades/paper or /trades/live. Live requires PAPER=0 + LIVE_TRADING_CONFIRMED=YES and confirm_live=true in this request."
-                  >?</span
-                >
-              </h3>
-              <div class="btn-row">
-                <button type="button" class="btn small" id="btn-agentic-bot-kill-switch">Kill switch status</button>
-                <button type="button" class="btn danger" id="btn-agentic-bot-kill-on">Kill ON</button>
-                <button type="button" class="btn" id="btn-agentic-bot-kill-off">Kill OFF</button>
-                <button type="button" class="btn small" id="btn-agentic-bot-caps">Caps</button>
-              </div>
-              <div class="field-grid">
-                <label class="field wide">
-                  <span>Intent JSON</span>
-                  <textarea id="agentic-bot-intent-json" rows="8" spellcheck="false"></textarea>
-                </label>
-                <label class="inline-check wide">
-                  <input type="checkbox" id="agentic-bot-confirm-live" />
-                  <span>confirm_live</span>
-                </label>
-              </div>
-              <div class="btn-row">
-                <button type="button" class="btn" id="btn-agentic-bot-send-paper">Send paper</button>
-                <button type="button" class="btn primary danger" id="btn-agentic-bot-send-live">Send live</button>
-              </div>
-              <pre class="out out-compact" id="agentic-bot-live-out">—</pre>
-            </details>
-          </div>
-        </section>
-
-        <section class="card wide" id="sec-agentic-process">
-          <div class="card-head">
-            <h2><span class="step-num">2</span> One-click run + runtime status</h2>
-            <div class="btn-row">
-              <button type="button" class="btn primary" id="btn-agentic-spin-up">Spin up</button>
-              <button type="button" class="btn small" id="btn-agentic-process-status">Status</button>
-              <button type="button" class="btn small" id="btn-agentic-refresh-health">Health</button>
-              <button type="button" class="btn danger" id="btn-agentic-process-stop">Stop</button>
-            </div>
-          </div>
-          <p class="muted small">
-            <strong>Spin up</strong> runs: submodule init, <code>npm install</code>, <code>npm run build</code>, then
-            <code>npm start</code>.
-          </p>
-          <p class="hint" id="agentic-process-line">—</p>
-          <p class="hint small" id="agentic-runtime-line">Loading…</p>
-          <div class="field-grid">
-            <label class="field wide">
-              <span>Run bot command (dashboard interpreter)</span>
-              <input
-                type="text"
-                id="agentic-process-command"
-                autocomplete="off"
-                placeholder="e.g. help, status, strategies profitable=true limit=10"
-              />
-            </label>
-          </div>
-          <div class="btn-row">
-            <button type="button" class="btn small" id="btn-agentic-cmd-help" data-agentic-cmd="help">help</button>
-            <button type="button" class="btn small" id="btn-agentic-cmd-status" data-agentic-cmd="status">status</button>
-            <button type="button" class="btn small" id="btn-agentic-cmd-health" data-agentic-cmd="health">health</button>
-            <button type="button" class="btn small" id="btn-agentic-cmd-positions" data-agentic-cmd="positions">positions</button>
-            <button type="button" class="btn small" id="btn-agentic-cmd-strategies" data-agentic-cmd="strategies profitable=true limit=10">strategies preset</button>
-          </div>
-          <div class="btn-row">
-            <button type="button" class="btn small" id="btn-agentic-process-command-send">Send command</button>
-          </div>
-          <pre class="out out-compact" id="agentic-process-command-out">—</pre>
-          <h3 class="subhead">Terminal commands</h3>
-          <p class="hint small">
-            Copy/paste into terminal. First block mirrors dashboard command syntax (via HTTP interpreter). Second block is
-            direct `curl` control against a live bot API.
-          </p>
-          <pre class="out out-compact" id="agentic-terminal-stdin-cmds">help
-status
-health
+      <!-- Terminal cheatsheet -->
+      <details class="mt-3">
+        <summary class="text-xs text-ink-muted cursor-pointer hover:text-ink">Terminal / curl cheatsheet</summary>
+        <div class="space-y-2 mt-2">
+          <pre class="out text-xs" id="agentic-terminal-stdin-cmds">help
+status · health · positions · caps
 strategies profitable=true limit=10 venue=binance,bybit
-positions venue=twilight,binance,bybit
 trades limit=25 q=funding
 ticks skill=funding-arb status=noop limit=100
-kill on
-kill off
-caps</pre>
-          <pre class="out out-compact" id="agentic-terminal-http-cmds">curl 'http://127.0.0.1:8787/healthz'
-curl 'http://127.0.0.1:8787/strategies?profitable=true&amp;limit=10'
+kill on · kill off</pre>
+          <pre class="out text-xs" id="agentic-terminal-http-cmds">curl 'http://127.0.0.1:8787/healthz'
 curl 'http://127.0.0.1:8787/positions'
-curl 'http://127.0.0.1:8787/trades?limit=25'
-curl 'http://127.0.0.1:8787/ticks?skill=funding-arb&amp;status=noop&amp;limit=50'
-curl -X PUT 'http://127.0.0.1:8787/kill-switch' -H 'content-type: application/json' -d '{"on":true}'
-curl -X PUT 'http://127.0.0.1:8787/kill-switch' -H 'content-type: application/json' -d '{"on":false}'</pre>
-          <pre class="out out-compact" id="agentic-terminal-start-cmd">cd external/twilight-bot &amp;&amp; npm install &amp;&amp; npm run build &amp;&amp; npm start</pre>
-          <pre class="out out-compact" id="agentic-terminal-claude-auth-cmd"># required for live mode when consult is ON
+curl 'http://127.0.0.1:8787/strategies?profitable=true&limit=10'
+curl -X PUT 'http://127.0.0.1:8787/kill-switch' -d '{"on":true}' -H 'content-type:application/json'</pre>
+          <pre class="out text-xs" id="agentic-terminal-start-cmd">cd external/twilight-bot && npm install && npm run build && npm start</pre>
+          <pre class="out text-xs" id="agentic-terminal-claude-auth-cmd"># if consult is ON:
 claude auth login</pre>
-          <h3 class="subhead">Recent bot output</h3>
-          <p class="hint small">Live stdout/stderr/stdin from the process spawned by this dashboard.</p>
-          <pre class="out out-compact" id="agentic-process-logs-out">Loading…</pre>
-        </section>
-
-        <section class="card wide" id="sec-agentic-pnl">
-          <div class="card-head">
-            <h2>Agent P&amp;L (positions)</h2>
-            <button type="button" class="btn small" id="btn-pnl-refresh-agentic">Refresh</button>
-          </div>
-          <p class="muted" id="pnl-note-line-agentic" hidden></p>
-          <dl class="stats stats-cols" id="pnl-stats-agentic"></dl>
-          <h3 class="subhead">Open</h3>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Strategy</th>
-                  <th>Mode</th>
-                  <th>Entry BTC</th>
-                  <th>Unreal $</th>
-                  <th>Close (venues + ledger)</th>
-                </tr>
-              </thead>
-              <tbody id="positions-open-body-agentic"></tbody>
-            </table>
-          </div>
-          <h3 class="subhead">Closed</h3>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Closed</th>
-                  <th>Strategy</th>
-                  <th>Realized $</th>
-                </tr>
-              </thead>
-              <tbody id="positions-closed-body-agentic"></tbody>
-            </table>
-          </div>
-        </section>
-
-      </div>
-    </main>
-
-    <div
-      id="modal-real-trade"
-      class="modal-overlay"
-      hidden
-      aria-hidden="true"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="modal-real-trade-title"
-    >
-      <div class="modal-dialog card">
-        <div class="modal-head">
-          <h2 id="modal-real-trade-title" class="modal-title">Real trade — deployment size</h2>
-          <button type="button" class="btn ghost small modal-close" id="modal-real-trade-dismiss" aria-label="Close">
-            ×
-          </button>
         </div>
-        <p class="modal-strategy-line" id="modal-real-trade-strategy"></p>
-        <p class="hint" id="modal-real-trade-template"></p>
-        <label class="field wide">
-          <span>Total to deploy (USD)</span>
-          <input type="number" id="modal-real-total-usd" min="1" step="100" />
+      </details>
+    </section>
+
+  </div><!-- /grid -->
+
+  <!-- Bot live data: strategies / trades / positions -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+    <!-- Strategies -->
+    <section class="card-inset">
+      <div class="section-heading">
+        <h3 class="text-sm font-medium">Strategies <span class="help-tip" data-tip="Profitable strategies visible to the bot.">?</span></h3>
+        <button type="button" class="btn btn-sm" id="btn-agentic-bot-strategies-refresh">Refresh</button>
+      </div>
+      <div class="space-y-2 mb-2">
+        <label class="flex items-center gap-1 text-xs text-ink-muted">
+          <input type="checkbox" id="agentic-bot-strategies-profitable" checked />
+          Profitable only
         </label>
-        <div class="btn-row modal-presets">
-          <span class="muted small">Scale template:</span>
-          <button type="button" class="btn small ghost" data-preset-pct="25">25%</button>
-          <button type="button" class="btn small ghost" data-preset-pct="50">50%</button>
-          <button type="button" class="btn small ghost" data-preset-pct="100">100%</button>
-        </div>
-        <div class="modal-balance-block">
-          <button type="button" class="btn small" id="modal-real-fetch-balance">Load ZkOS account snapshot</button>
-          <p class="hint small" id="modal-real-balance-hint">
-            Fetches <code>wallet accounts</code> for the wallet in <strong>Twilight wallet</strong> (step 1) and shows the row for
-            <code>TWILIGHT_ACCOUNT_INDEX</code> (ZkOS step — default index used for real Twilight orders). NYKS / on-chain
-            balances are separate from ZkOS memo balances; this snapshot is what matters for sizing the Twilight leg.
-          </p>
-          <pre class="out out-compact modal-balance-pre" id="modal-real-balance-out" hidden></pre>
-        </div>
-        <p class="hint small">
-          Requires CEX / relayer setup and <strong>Allow real trading</strong> in Twilight wallet for live orders.
-          <strong>Total to deploy (USD)</strong> is the combined leg <strong>notional</strong> (same kind of USD as template
-          Twilight + CEX sizes): exposure before leverage splits it into margin at each venue — it is not “margin after
-          leverage.” Leg shares scale proportionally vs that template.
-        </p>
-        <div class="btn-row modal-actions">
-          <button type="button" class="btn" id="modal-real-cancel">Cancel</button>
-          <button type="button" class="btn primary danger" id="modal-real-run">Run real trade</button>
+        <div class="flex gap-2">
+          <input type="number" id="agentic-bot-strategies-limit" class="input text-xs w-20" placeholder="20" min="1" />
+          <label class="flex items-center gap-1 text-xs text-ink-muted">
+            <input type="checkbox" id="agentic-bot-strategies-venue-binance" />
+            Binance
+          </label>
+          <label class="flex items-center gap-1 text-xs text-ink-muted">
+            <input type="checkbox" id="agentic-bot-strategies-venue-bybit" />
+            Bybit
+          </label>
         </div>
       </div>
-    </div>
+      <pre class="out text-xs" id="agentic-bot-strategies-out">Loading…</pre>
+    </section>
 
-    <div
-      id="modal-strategy-details"
-      class="modal-overlay"
-      hidden
-      aria-hidden="true"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="modal-strategy-details-title"
-    >
-      <div class="modal-dialog card modal-dialog-wide">
-        <div class="modal-head">
-          <h2 id="modal-strategy-details-title" class="modal-title">Strategy details</h2>
-          <button
-            type="button"
-            class="btn ghost small modal-close"
-            id="modal-strategy-details-dismiss"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-        <p class="modal-strategy-line" id="modal-strategy-details-name"></p>
-        <div class="table-wrap">
-          <table>
-            <tbody id="modal-strategy-details-table"></tbody>
-          </table>
-        </div>
-        <h3 class="subhead">Raw strategy payload</h3>
-        <pre class="out out-compact" id="modal-strategy-details-raw"></pre>
-        <div class="btn-row modal-actions">
-          <button type="button" class="btn" id="modal-strategy-details-close">Close</button>
-        </div>
+    <!-- Trades -->
+    <section class="card-inset">
+      <div class="section-heading">
+        <h3 class="text-sm font-medium">Trade history <span class="help-tip" data-tip="Intent history from the bot DB. Supports FTS search.">?</span></h3>
+        <button type="button" class="btn btn-sm" id="btn-agentic-bot-trades-refresh">Refresh</button>
       </div>
-    </div>
-
-    <div
-      id="modal-open-position"
-      class="modal-overlay"
-      hidden
-      aria-hidden="true"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="modal-open-position-title"
-    >
-      <div class="modal-dialog card modal-dialog-wide">
-        <div class="modal-head">
-          <h2 id="modal-open-position-title" class="modal-title">Open position</h2>
-          <button
-            type="button"
-            class="btn ghost small modal-close"
-            id="modal-open-position-dismiss"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-        <p class="modal-strategy-line" id="modal-open-position-line"></p>
-        <div class="table-wrap">
-          <table>
-            <tbody id="modal-open-position-table"></tbody>
-          </table>
-        </div>
-        <h3 class="subhead">Ledger row (raw)</h3>
-        <pre class="out out-compact" id="modal-open-position-raw"></pre>
-        <div class="btn-row modal-actions">
-          <button type="button" class="btn" id="modal-open-position-close">Close</button>
-        </div>
+      <div class="flex gap-2 mb-2">
+        <input type="text" id="agentic-bot-trades-q" class="input text-xs flex-1" placeholder="FTS search…" autocomplete="off" />
+        <input type="number" id="agentic-bot-trades-limit" class="input text-xs w-16" placeholder="25" min="1" />
       </div>
-    </div>
+      <pre class="out text-xs" id="agentic-bot-trades-out">Loading…</pre>
+    </section>
 
-    <script src="/app.js" type="module"></script>
-  </body>
+    <!-- Positions + kill switch -->
+    <section class="card-inset">
+      <div class="section-heading">
+        <h3 class="text-sm font-medium">Positions <span class="help-tip" data-tip="Live positions from the bot. Close by position id.">?</span></h3>
+        <button type="button" class="btn btn-sm" id="btn-agentic-bot-positions-refresh">Refresh</button>
+      </div>
+
+      <!-- Kill switch — always visible -->
+      <div class="flex gap-1 mb-2 flex-wrap">
+        <button type="button" class="btn btn-sm" id="btn-agentic-bot-kill-switch">Kill status</button>
+        <button type="button" class="btn-danger btn-sm" id="btn-agentic-bot-kill-on">Kill ON</button>
+        <button type="button" class="btn-ok btn-sm" id="btn-agentic-bot-kill-off">Kill OFF</button>
+      </div>
+      <p class="text-xs text-ink-muted mb-2">Kill ON blocks all new trades immediately.</p>
+
+      <div class="flex gap-2 mb-2 flex-wrap">
+        <label class="flex items-center gap-1 text-xs text-ink-muted">
+          <input type="checkbox" id="agentic-bot-positions-venue-twilight" />
+          twilight
+        </label>
+        <label class="flex items-center gap-1 text-xs text-ink-muted">
+          <input type="checkbox" id="agentic-bot-positions-venue-binance" />
+          binance
+        </label>
+        <label class="flex items-center gap-1 text-xs text-ink-muted">
+          <input type="checkbox" id="agentic-bot-positions-venue-bybit" />
+          bybit
+        </label>
+      </div>
+      <div class="flex gap-2 mb-2">
+        <input type="text" id="agentic-bot-close-position-id" class="input text-xs flex-1" placeholder="position id, e.g. twi_0" autocomplete="off" />
+        <button type="button" class="btn-danger btn-sm" id="btn-agentic-bot-close-position">Close</button>
+      </div>
+      <div id="agentic-bot-positions-out" class="text-xs">Loading…</div>
+    </section>
+
+  </div><!-- /bot data grid -->
+
+  <!-- Exit conditions + intent — always visible, part of normal trade flow -->
+  <section class="card mt-4">
+    <div class="section-heading">
+      <h2><span class="text-gold font-display">4</span> Exit conditions &amp; send intent</h2>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+      <!-- Exit rules builder -->
+      <div class="card-inset space-y-3">
+        <p class="label">When should the bot close? <span class="help-tip" data-tip="DSL rules are evaluated each scheduler tick. Any matching rule triggers a close immediately.">?</span></p>
+
+        <div class="grid grid-cols-3 gap-2">
+          <div class="field">
+            <label class="label">Take profit %</label>
+            <input type="number" id="tb-exit-take-profit-pct" class="input" min="0.1" step="0.1" placeholder="5" />
+          </div>
+          <div class="field">
+            <label class="label">Stop loss %</label>
+            <input type="number" id="tb-exit-stop-loss-pct" class="input" min="0.1" step="0.1" placeholder="3" />
+          </div>
+          <div class="field">
+            <label class="label">Max hours</label>
+            <input type="number" id="tb-exit-max-hours" class="input" min="0" step="1" placeholder="0" />
+          </div>
+        </div>
+
+        <div class="space-y-1.5 border-t border-edge pt-3">
+          <label class="flex items-start gap-2 text-xs cursor-pointer group">
+            <input type="checkbox" id="tb-exit-close-unprofitable" class="mt-0.5 accent-gold" />
+            <span>
+              <span class="text-ink-muted group-hover:text-ink">Close when P&amp;L turns negative</span>
+              <code class="block text-ink-subtle mt-0.5">pnl.unrealized_pct ≤ 0</code>
+            </span>
+          </label>
+          <label class="flex items-start gap-2 text-xs cursor-pointer group">
+            <input type="checkbox" id="tb-exit-close-spread-inverts" class="mt-0.5 accent-gold" />
+            <span>
+              <span class="text-ink-muted group-hover:text-ink">Close when funding spread inverts</span>
+              <code class="block text-ink-subtle mt-0.5">Twilight rate ≤ CEX rate — for arb strategies</code>
+            </span>
+          </label>
+        </div>
+
+        <button type="button" class="btn btn-sm" id="btn-tb-build-intent-json">Build exit rules ↓</button>
+        <p class="text-xs text-ink-subtle">Ratchet floor rule (<code>pnl.locked_floor_pct</code>) is always added when any rule is set. Absolute USD stop loss is not yet supported by the DSL.</p>
+      </div>
+
+      <!-- Operator intent + send -->
+      <div class="card-inset space-y-2">
+        <p class="label">Intent JSON <span class="help-tip" data-tip="Edit legs[] to specify venue/side/notional/account_index. Exit rules are filled by the builder. Send paper to test without real funds.">?</span></p>
+        <textarea id="agentic-bot-intent-json" class="input font-mono text-xs h-36 resize-y" spellcheck="false"></textarea>
+        <label class="flex items-center gap-2 text-xs text-ink-muted">
+          <input type="checkbox" id="agentic-bot-confirm-live" />
+          confirm_live (required for live trades)
+        </label>
+        <div class="flex gap-2">
+          <button type="button" class="btn btn-sm" id="btn-agentic-bot-send-paper">Send paper</button>
+          <button type="button" class="btn-danger btn-sm" id="btn-agentic-bot-send-live">Send live</button>
+        </div>
+        <pre class="out text-xs" id="agentic-bot-live-out">—</pre>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Advanced diagnostics -->
+  <details class="card mt-4">
+    <summary class="text-sm font-medium text-ink-muted cursor-pointer hover:text-ink">Advanced: risk caps &amp; scheduler ticks</summary>
+    <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+      <div class="card-inset space-y-2">
+        <p class="label">Risk caps (in-memory) <span class="help-tip" data-tip="MAX_NOTIONAL_USD_PER_INTENT, MAX_OPEN_POSITIONS, MAX_LEVERAGE, DAILY_LOSS_STOP_USD, MIN_BALANCE_USD_PER_VENUE. Resets on bot restart.">?</span></p>
+        <button type="button" class="btn btn-sm" id="btn-agentic-bot-caps">Fetch current caps</button>
+        <pre class="out text-xs" id="agentic-bot-caps-out">—</pre>
+      </div>
+
+      <div class="card-inset space-y-2">
+        <p class="label">Scheduler ticks <span class="help-tip" data-tip="Tick history from the bot DB. Filter by skill and status to diagnose why a trade was or wasn't opened.">?</span></p>
+        <div class="flex gap-2 flex-wrap">
+          <input type="text" id="agentic-bot-ticks-skill" class="input text-xs" placeholder="skill e.g. funding-arb" autocomplete="off" />
+          <input type="text" id="agentic-bot-ticks-status" class="input text-xs" placeholder="status e.g. noop" autocomplete="off" />
+          <input type="number" id="agentic-bot-ticks-limit" class="input text-xs w-16" placeholder="100" min="1" />
+          <button type="button" class="btn btn-sm" id="btn-agentic-bot-ticks-refresh">Go</button>
+        </div>
+        <pre class="out text-xs" id="agentic-bot-ticks-out">—</pre>
+      </div>
+
+    </div>
+  </details>
+
+</div><!-- /desk-panel-agentic -->
+
+</main>
+
+<script src="/app.js" type="module"></script>
+</body>
 </html>

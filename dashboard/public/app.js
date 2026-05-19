@@ -1970,6 +1970,66 @@ async function relayerPost(path, body) {
   }
 }
 
+// ── System status bar ─────────────────────────────────────────────
+let _sysStatusMonitorRunning = false;
+let _sysStatusBotUp = false;
+let _sysStatusKillOn = false;
+
+function applySysPill(pillId, dotId, labelId, state, label) {
+  const pill = document.getElementById(pillId);
+  const dot  = document.getElementById(dotId);
+  const lbl  = document.getElementById(labelId);
+  if (!pill) return;
+  pill.className = pill.className.replace(/\bpill-\w+\b/g, '').trim();
+  pill.classList.add(state === 'ok' ? 'pill-ok' : state === 'warn' ? 'pill-warn' : state === 'danger' ? 'pill-danger' : 'pill-muted');
+  if (dot) {
+    dot.className = dot.className.replace(/\bdot-\w+\b/g, '').trim();
+    dot.classList.add(state === 'ok' ? 'dot-ok' : state === 'danger' ? 'dot-danger' : state === 'warn' ? 'dot-danger' : 'dot-muted');
+  }
+  if (lbl) lbl.textContent = label;
+}
+
+async function updateSysStatusBar() {
+  // Network — just probe /api/health
+  try {
+    await fetch('/api/health');
+    applySysPill('sys-status-network', 'sys-status-network-dot', 'sys-status-network-label', 'ok', 'network ok');
+  } catch {
+    applySysPill('sys-status-network', 'sys-status-network-dot', 'sys-status-network-label', 'danger', 'offline');
+  }
+
+  // Monitor
+  try {
+    const s = await readJson('/api/status');
+    _sysStatusMonitorRunning = !!s.running;
+    applySysPill('sys-status-monitor', 'sys-status-monitor-dot', 'sys-status-monitor-label',
+      _sysStatusMonitorRunning ? 'ok' : 'muted',
+      _sysStatusMonitorRunning ? 'monitor on' : 'monitor off');
+  } catch {
+    applySysPill('sys-status-monitor', 'sys-status-monitor-dot', 'sys-status-monitor-label', 'warn', 'monitor ?');
+  }
+
+  // Bot
+  try {
+    const h = await readJson('/api/twilight-bot/healthz');
+    _sysStatusBotUp = true;
+    const uptime = h?.uptime_s ?? h?.uptime ?? h?.uptime_sec;
+    applySysPill('sys-status-bot', 'sys-status-bot-dot', 'sys-status-bot-label',
+      'ok', uptime != null ? `bot up ${Math.floor(Number(uptime))}s` : 'bot up');
+  } catch {
+    _sysStatusBotUp = false;
+    applySysPill('sys-status-bot', 'sys-status-bot-dot', 'sys-status-bot-label', 'muted', 'bot off');
+  }
+
+  // Kill switch pill
+  try {
+    const ks = await readJson('/api/twilight-bot/kill-switch');
+    _sysStatusKillOn = !!(ks?.on ?? ks?.kill_switch_on);
+  } catch { /* bot offline — keep last known */ }
+  const ksPill = document.getElementById('sys-status-killswitch');
+  if (ksPill) ksPill.hidden = !_sysStatusKillOn;
+}
+
 async function refreshStatus(opts = {}) {
   const el = document.getElementById('status-line');
   const last = document.getElementById('last-cycle');
@@ -2015,12 +2075,12 @@ async function refreshStatus(opts = {}) {
 }
 
 const PNL_DOM_SLOTS = [
-  { stats: 'pnl-stats', note: 'pnl-note-line', open: 'positions-open-body', closed: 'positions-closed-body' },
+  { stats: 'pnl-stats-manual', note: 'pnl-note-line-manual', open: 'positions-open-body-manual', closed: 'positions-closed-body-manual' },
   {
-    stats: 'pnl-stats-auto',
-    note: 'pnl-note-line-auto',
-    open: 'positions-open-body-auto',
-    closed: 'positions-closed-body-auto',
+    stats: 'pnl-stats-automated',
+    note: 'pnl-note-line-automated',
+    open: 'positions-open-body-automated',
+    closed: 'positions-closed-body-automated',
   },
   {
     stats: 'pnl-stats-agentic',
@@ -2739,6 +2799,7 @@ const TWILIGHT_BOT_PARAM_KEYS = [
   'BINANCE_API_SECRET',
   'BYBIT_API_KEY',
   'BYBIT_API_SECRET',
+  'BYBIT_TESTNET',
 ];
 
 const TWILIGHT_BOT_SECRET_KEYS = new Set([
@@ -2862,7 +2923,7 @@ async function refreshTwilightBotParams() {
     refreshTwilightBotSecretIndicators();
     updateTwilightBotLiveReadiness();
     if (msg) {
-      msg.textContent = 'Saved to repo .env (used by twilight-bot process).';
+      msg.textContent = '';
       msg.classList.remove('hint-error');
     }
   } catch (e) {
@@ -2914,7 +2975,6 @@ function collectTwilightBotParamUpdates() {
     const el = tbParamInput(key);
     if (!el) continue;
     const raw = String(el.value ?? '').trim();
-    if (!raw && TWILIGHT_BOT_SECRET_KEYS.has(key) && byKey[key]?.hasValue) continue;
     if (!raw && TWILIGHT_BOT_SECRET_KEYS.has(key)) continue;
     if (!raw) continue;
     updates[key] = raw;
@@ -2946,6 +3006,43 @@ async function saveTwilightBotParams() {
     }
     showDashboardError(m, 'Save twilight-bot params');
   }
+}
+
+/** Build intent JSON exit rules from the TP/SL/time fields and inject into the textarea. */
+function buildIntentJsonFromExitFields() {
+  const tpPct  = parseFloat(document.getElementById('tb-exit-take-profit-pct')?.value ?? '');
+  const slPct  = parseFloat(document.getElementById('tb-exit-stop-loss-pct')?.value ?? '');
+  const maxHrs = parseFloat(document.getElementById('tb-exit-max-hours')?.value ?? '');
+  const closeUnprofitable = document.getElementById('tb-exit-close-unprofitable')?.checked === true;
+  const closeSpreadInverts = document.getElementById('tb-exit-close-spread-inverts')?.checked === true;
+
+  const rules = [];
+  if (!isNaN(tpPct)  && tpPct  > 0) rules.push({ if: `pnl.unrealized_pct >= ${(tpPct / 100).toFixed(4)}`, do: 'close' });
+  if (!isNaN(slPct)  && slPct  > 0) rules.push({ if: `pnl.unrealized_pct <= -${(slPct / 100).toFixed(4)}`, do: 'close' });
+  if (!isNaN(maxHrs) && maxHrs > 0) rules.push({ if: `time_in_position_hours >= ${maxHrs}`, do: 'close' });
+  // Close when the position is no longer profitable (P&L turned negative)
+  if (closeUnprofitable) rules.push({ if: 'pnl.unrealized_pct <= 0', do: 'close' });
+  // Close when the funding spread inverts — the arb opportunity is gone
+  // (Twilight funding rate falls to or below either CEX's rate)
+  if (closeSpreadInverts) {
+    rules.push({ if: 'funding_rates.twilight.rate <= funding_rates.bybit.rate', do: 'close' });
+    rules.push({ if: 'funding_rates.twilight.rate <= funding_rates.binance.rate', do: 'close' });
+  }
+  // Ratchet floor: always add when any rule is set (locks profit as HWM rises)
+  if (rules.length > 0) {
+    rules.push({ if: 'pnl.unrealized_pct <= pnl.locked_floor_pct', do: 'close' });
+  }
+  const payload = {
+    thesis: 'operator-issued via dashboard',
+    legs: [],
+    exit: { rules },
+  };
+  const ta = document.getElementById('agentic-bot-intent-json');
+  if (ta) ta.value = JSON.stringify(payload, null, 2);
+  const out = document.getElementById('agentic-bot-live-out');
+  if (out) out.textContent = rules.length
+    ? `${rules.length} exit rule(s) built. Edit legs[] to add trade details, then Send paper or Send live.`
+    : 'No exit rules — set TP%, SL%, or check a condition above.';
 }
 
 async function refreshBotTrades(opts = {}) {
@@ -3026,21 +3123,55 @@ function selectedBotPositionVenues() {
   return out;
 }
 
+function renderPositionsTable(container, positions) {
+  if (!positions.length) {
+    container.innerHTML = '<p class="text-ink-subtle py-2">No open positions.</p>';
+    return;
+  }
+  const rows = positions.map(p => {
+    const pnl = Number.isFinite(Number(p.unrealized_pnl)) ? Number(p.unrealized_pnl) : null;
+    const pnlCls = pnl === null ? '' : pnl >= 0 ? 'text-ok' : 'text-danger';
+    const pnlStr = pnl === null ? '—' : (pnl >= 0 ? '+' : '') + pnl.toFixed(4);
+    const sideCls = p.side === 'short' ? 'text-danger' : 'text-ok';
+    const venuePill = `<span class="pill pill-muted">${escapeHtml(p.venue ?? '—')}</span>`;
+    return `<tr>
+      <td class="py-1 pr-2 font-mono">${escapeHtml(String(p.id ?? '—'))}</td>
+      <td class="py-1 pr-2">${venuePill}</td>
+      <td class="py-1 pr-2 ${sideCls}">${escapeHtml(p.side ?? '—')}</td>
+      <td class="py-1 pr-2 text-right">${Number(p.size ?? 0).toLocaleString()}</td>
+      <td class="py-1 pr-2 text-right">${p.entry_price ? '$' + Number(p.entry_price).toLocaleString() : '—'}</td>
+      <td class="py-1 text-right ${pnlCls}">${pnlStr}</td>
+    </tr>`;
+  }).join('');
+  container.innerHTML = `
+    <table class="data-table w-full">
+      <thead><tr>
+        <th>ID</th><th>Venue</th><th>Side</th>
+        <th class="text-right">Size</th><th class="text-right">Entry</th><th class="text-right">Unreal. PnL</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
 async function refreshBotPositions(opts = {}) {
-  const out = document.getElementById('agentic-bot-positions-out');
-  if (!out) return;
-  out.textContent = 'Loading…';
+  const container = document.getElementById('agentic-bot-positions-out');
+  if (!container) return;
+  container.innerHTML = '<p class="text-ink-subtle">Loading…</p>';
   try {
     const data = await readJson('/api/twilight-bot/positions');
     const selected = selectedBotPositionVenues();
-    if (!Array.isArray(data) || selected.length === 0) {
-      out.textContent = asPrettyJson(data);
-      return;
+    let positions = Array.isArray(data) ? data : (data?.positions ?? []);
+    if (selected.length > 0) {
+      positions = positions.filter(row => selected.includes(String(row?.venue ?? '').toLowerCase()));
     }
-    out.textContent = asPrettyJson(data.filter((row) => selected.includes(String(row?.venue || '').toLowerCase())));
+    if (Array.isArray(positions) && positions.length >= 0 && positions.every(p => 'venue' in p)) {
+      renderPositionsTable(container, positions);
+    } else {
+      container.innerHTML = `<pre class="out text-xs">${escapeHtml(asPrettyJson(data))}</pre>`;
+    }
   } catch (e) {
     const m = errMsg(e);
-    out.textContent = m;
+    container.innerHTML = `<p class="text-danger text-xs">${escapeHtml(m)}</p>`;
     if (opts.userAction) showDashboardError(m, 'twilight-bot positions');
   }
 }
@@ -3137,7 +3268,7 @@ async function botKillSwitchSet(on, opts = {}) {
 }
 
 async function botCapsGet(opts = {}) {
-  const out = document.getElementById('agentic-bot-live-out');
+  const out = document.getElementById('agentic-bot-caps-out') ?? document.getElementById('agentic-bot-live-out');
   if (!out) return;
   out.textContent = 'Loading…';
   try {
@@ -3776,12 +3907,12 @@ function bindPositionsOpenBodyClick(tbody) {
   });
 }
 
-bindPositionsOpenBodyClick(document.getElementById('positions-open-body'));
-bindPositionsOpenBodyClick(document.getElementById('positions-open-body-auto'));
+bindPositionsOpenBodyClick(document.getElementById('positions-open-body-manual'));
+bindPositionsOpenBodyClick(document.getElementById('positions-open-body-automated'));
 bindPositionsOpenBodyClick(document.getElementById('positions-open-body-agentic'));
 
-document.getElementById('btn-pnl-refresh')?.addEventListener('click', () => refreshPnl({ userAction: true }));
-document.getElementById('btn-pnl-refresh-auto')?.addEventListener('click', () => refreshPnl({ userAction: true }));
+document.getElementById('btn-pnl-refresh-manual')?.addEventListener('click', () => refreshPnl({ userAction: true }));
+document.getElementById('btn-pnl-refresh-automated')?.addEventListener('click', () => refreshPnl({ userAction: true }));
 document
   .getElementById('btn-pnl-refresh-agentic')
   ?.addEventListener('click', () => refreshPnl({ userAction: true }));
@@ -5046,6 +5177,9 @@ document.getElementById('btn-agentic-bot-kill-off')?.addEventListener('click', a
   if (!ok) return;
   botKillSwitchSet(false, { userAction: true });
 });
+document.getElementById('btn-tb-build-intent-json')?.addEventListener('click', () => {
+  buildIntentJsonFromExitFields();
+});
 document.getElementById('btn-agentic-bot-caps')?.addEventListener('click', async () => {
   const ok = await openAgenticConfirmModal({
     title: 'Fetch caps?',
@@ -5137,6 +5271,8 @@ refreshTwilightBotParams();
 
 setInterval(refreshStatus, 4000);
 setInterval(refreshAgenticTrading, 10000);
+updateSysStatusBar();
+setInterval(updateSysStatusBar, 8000);
 
 let strategiesTimer = null;
 function syncStrategiesTimer() {
