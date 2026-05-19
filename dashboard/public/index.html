@@ -424,15 +424,15 @@
             Profitable only
           </label>
           <label class="flex items-center gap-1 text-xs text-ink-muted">
-            <input type="checkbox" id="chk-strategies-binance" />
+            <input type="checkbox" id="chk-strategies-cex-binance" />
             Binance
           </label>
           <label class="flex items-center gap-1 text-xs text-ink-muted">
-            <input type="checkbox" id="chk-strategies-bybit" />
+            <input type="checkbox" id="chk-strategies-cex-bybit" />
             Bybit
           </label>
           <label class="flex items-center gap-1 text-xs text-ink-muted">
-            <input type="checkbox" id="chk-strategies-auto-refresh" />
+            <input type="checkbox" id="chk-strategies-auto" />
             Auto
           </label>
           <button type="button" class="btn btn-sm" id="btn-strategies-refresh">Refresh</button>
@@ -442,18 +442,20 @@
         <table class="data-table">
           <thead>
             <tr>
-              <th>Strategy</th>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Category</th>
+              <th>Risk</th>
               <th>APY%</th>
               <th>Est. daily</th>
-              <th>Category</th>
-              <th>CEX leg</th>
+              <th>Position</th>
               <th></th>
             </tr>
           </thead>
-          <tbody id="strategies-table-body"></tbody>
+          <tbody id="strategies-body"></tbody>
         </table>
       </div>
-      <p class="text-xs text-ink-muted mt-2" id="strategies-last-updated"></p>
+      <p class="text-xs text-ink-muted mt-2" id="strategies-meta"></p>
     </section>
 
     <!-- Monitor settings -->
