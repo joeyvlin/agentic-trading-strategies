@@ -2714,6 +2714,17 @@ function asPrettyJson(v) {
   }
 }
 
+let _logPollInterval = null;
+
+function startLogPoller() {
+  if (_logPollInterval) return;
+  _logPollInterval = setInterval(() => refreshAgenticProcessStatus({}), 3000);
+}
+
+function stopLogPoller() {
+  if (_logPollInterval) { clearInterval(_logPollInterval); _logPollInterval = null; }
+}
+
 async function refreshAgenticProcessStatus(opts = {}) {
   const line = document.getElementById('agentic-process-line');
   const logsOut = document.getElementById('agentic-process-logs-out');
@@ -2728,9 +2739,21 @@ async function refreshAgenticProcessStatus(opts = {}) {
     }
     if (logsOut) {
       const lines = Array.isArray(st?.recentLogs) ? st.recentLogs : [];
-      logsOut.textContent = lines.length ? lines.join('\n') : 'No output yet.';
+      if (lines.length) {
+        logsOut.textContent = lines.join('\n');
+        logsOut.scrollTop = logsOut.scrollHeight;
+      } else if (st?.external && !st?.attached) {
+        logsOut.textContent = 'Bot is running externally (not started via Spin Up).\nLog capture requires the bot to be started from this dashboard.\nUse the command panel above to query the bot\'s HTTP API instead.';
+      } else if (!st?.running) {
+        logsOut.textContent = 'Bot not running.';
+      } else {
+        logsOut.textContent = 'No output yet.';
+      }
     }
+    // Fast log poll only while the bot is attached to this dashboard process.
+    if (st?.attached) { startLogPoller(); } else { stopLogPoller(); }
   } catch (e) {
+    stopLogPoller();
     if (!shouldSurfaceFetchError(e, opts)) return;
     const m = errMsg(e);
     if (line) line.textContent = m;
@@ -3456,6 +3479,9 @@ async function sendAgenticProcessCommand(opts = {}) {
     if (input) input.value = '';
     await refreshAgenticProcessStatus({ userAction: false });
     await refreshAgenticTrading({ userAction: false });
+    // Second refresh after a short delay — gives the bot time to write stdout
+    // in response to stdin commands or internal logging triggered by the API call.
+    setTimeout(() => refreshAgenticProcessStatus({}), 800);
   } catch (e) {
     const m = errMsg(e);
     if (out) out.textContent = m;
@@ -5114,6 +5140,9 @@ document.getElementById('btn-agentic-process-stop')?.addEventListener('click', a
   stopAgenticProcess();
 });
 document.getElementById('btn-agentic-process-status')?.addEventListener('click', () => {
+  refreshAgenticProcessStatus({ userAction: true });
+});
+document.getElementById('btn-agentic-logs-refresh')?.addEventListener('click', () => {
   refreshAgenticProcessStatus({ userAction: true });
 });
 document.getElementById('btn-agentic-process-command-send')?.addEventListener('click', async () => {

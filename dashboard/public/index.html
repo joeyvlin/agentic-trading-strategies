@@ -880,7 +880,10 @@
       <pre class="out text-xs mb-3" id="agentic-process-command-out">—</pre>
 
       <!-- Bot output log -->
-      <p class="label mb-1">Recent bot output</p>
+      <div class="flex items-center justify-between mb-1">
+        <p class="label">Recent bot output <span class="help-tip" data-tip="Live stdout/stderr from the bot process. Only captured when the bot is started via Spin Up from this dashboard. Auto-refreshes every 3s when attached. Scrolls to latest.">?</span></p>
+        <button type="button" class="btn btn-sm" id="btn-agentic-logs-refresh">Refresh</button>
+      </div>
       <pre class="out-tall" id="agentic-process-logs-out">Loading…</pre>
 
       <!-- Terminal cheatsheet -->
