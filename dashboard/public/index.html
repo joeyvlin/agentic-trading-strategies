@@ -752,35 +752,35 @@
       <div class="space-y-3">
         <div class="grid grid-cols-2 gap-3">
           <div class="field">
-            <label class="label"><code>PAPER</code> (1=paper, 0=live)</label>
+            <label class="label">Paper mode <span class="help-tip" data-tip="1 = simulate all trades (no real orders sent). 0 = live mode. Start here until you've verified your setup.">?</span></label>
             <input type="text" id="tb-param-PAPER" class="input" autocomplete="off" />
           </div>
           <div class="field">
-            <label class="label"><code>LIVE_TRADING_CONFIRMED</code></label>
+            <label class="label">Live trading confirmed <span class="help-tip" data-tip="Must be set to YES before the bot will send real orders. A second safety gate on top of PAPER=0. Set intentionally — not by accident.">?</span></label>
             <input type="text" id="tb-param-LIVE_TRADING_CONFIRMED" class="input" autocomplete="off" />
           </div>
           <div class="field">
-            <label class="label"><code>CLAUDE_CONSULT_DISABLED</code></label>
+            <label class="label">Claude consult disabled <span class="help-tip" data-tip="1 = bot skips asking Claude AI for trade approval and acts autonomously. 0 = Claude reviews each intent before execution. Disable if you don't have a Claude CLI set up.">?</span></label>
             <input type="text" id="tb-param-CLAUDE_CONSULT_DISABLED" class="input" autocomplete="off" />
           </div>
           <div class="field">
-            <label class="label"><code>MAX_OPEN_POSITIONS</code></label>
+            <label class="label">Max open positions <span class="help-tip" data-tip="Maximum number of simultaneous open trades across all venues. Bot won't open new positions once this limit is reached.">?</span></label>
             <input type="text" id="tb-param-MAX_OPEN_POSITIONS" class="input" inputmode="numeric" autocomplete="off" />
           </div>
           <div class="field">
-            <label class="label"><code>MAX_NOTIONAL_USD</code></label>
+            <label class="label">Max notional per trade (USD) <span class="help-tip" data-tip="Maximum USD size for a single trade intent. Caps how much the bot can deploy per position regardless of strategy recommendation.">?</span></label>
             <input type="text" id="tb-param-MAX_NOTIONAL_USD_PER_INTENT" class="input" inputmode="decimal" autocomplete="off" />
           </div>
           <div class="field">
-            <label class="label"><code>MAX_LEVERAGE</code></label>
+            <label class="label">Max leverage <span class="help-tip" data-tip="Maximum allowed leverage multiplier. Bot will not open a position that requires higher leverage than this. Lower = safer.">?</span></label>
             <input type="text" id="tb-param-MAX_LEVERAGE" class="input" inputmode="decimal" autocomplete="off" />
           </div>
           <div class="field">
-            <label class="label"><code>DAILY_LOSS_STOP_USD</code></label>
+            <label class="label">Daily loss stop (USD) <span class="help-tip" data-tip="Bot halts all trading for the day once realized losses exceed this amount. Resets at midnight UTC. Acts as a circuit breaker.">?</span></label>
             <input type="text" id="tb-param-DAILY_LOSS_STOP_USD" class="input" inputmode="decimal" autocomplete="off" />
           </div>
           <div class="field">
-            <label class="label"><code>MIN_BALANCE_USD_PER_VENUE</code></label>
+            <label class="label">Min balance per venue (USD) <span class="help-tip" data-tip="Bot will not open a new position on a venue if its available balance drops below this threshold. Prevents over-deployment.">?</span></label>
             <input type="text" id="tb-param-MIN_BALANCE_USD_PER_VENUE" class="input" inputmode="decimal" autocomplete="off" />
           </div>
         </div>
@@ -789,28 +789,28 @@
 
         <div class="grid grid-cols-1 gap-3">
           <div class="field">
-            <label class="label"><code>NYKS_WALLET_ID</code></label>
+            <label class="label">Twilight wallet ID <span class="help-tip" data-tip="Your Twilight Network wallet address (nyks1…). Used to sign ZkOS trade transactions. Find it in the Wallet section of the Setup tab.">?</span></label>
             <input type="text" id="tb-param-NYKS_WALLET_ID" class="input" autocomplete="off" />
           </div>
           <div class="field">
-            <label class="label"><code>NYKS_WALLET_PASSPHRASE</code></label>
+            <label class="label">Twilight wallet passphrase <span class="help-tip" data-tip="Passphrase that unlocks your Twilight wallet for signing. Stored in .env with owner-only (600) permissions. Leave blank to keep the currently saved value.">?</span></label>
             <input type="password" id="tb-param-NYKS_WALLET_PASSPHRASE" class="input" autocomplete="off" />
           </div>
         </div>
 
         <div class="grid grid-cols-2 gap-3">
           <div class="field">
-            <label class="label"><code>BYBIT_API_KEY</code></label>
+            <label class="label">Bybit API key <span class="help-tip" data-tip="API key from your Bybit account (Unified Trading). Needs read + trade permissions. Used for the CEX leg of the arb trade.">?</span></label>
             <input type="password" id="tb-param-BYBIT_API_KEY" class="input" autocomplete="off" />
             <span class="text-xs" id="tb-param-status-BYBIT_API_KEY"></span>
           </div>
           <div class="field">
-            <label class="label"><code>BYBIT_API_SECRET</code></label>
+            <label class="label">Bybit API secret <span class="help-tip" data-tip="API secret paired with the key above. Never shared with the dashboard server — written directly to .env.">?</span></label>
             <input type="password" id="tb-param-BYBIT_API_SECRET" class="input" autocomplete="off" />
             <span class="text-xs" id="tb-param-status-BYBIT_API_SECRET"></span>
           </div>
           <div class="field">
-            <label class="label"><code>BYBIT_TESTNET</code> (1=testnet)</label>
+            <label class="label">Bybit testnet <span class="help-tip" data-tip="Set to 1 to point the bot at Bybit testnet instead of mainnet. Use this while testing — testnet trades are free and don't affect real funds.">?</span></label>
             <input type="text" id="tb-param-BYBIT_TESTNET" class="input" autocomplete="off" placeholder="0" />
           </div>
         </div>
@@ -819,17 +819,17 @@
           <summary class="text-xs text-ink-muted cursor-pointer hover:text-ink">Binance keys + Claude CLI (optional)</summary>
           <div class="grid grid-cols-2 gap-3 mt-2">
             <div class="field">
-              <label class="label"><code>BINANCE_API_KEY</code></label>
+              <label class="label">Binance API key <span class="help-tip" data-tip="API key from Binance Futures (USDM). Required only if using Binance as the CEX leg. Needs Futures read + trade permissions.">?</span></label>
               <input type="password" id="tb-param-BINANCE_API_KEY" class="input" autocomplete="off" />
               <span class="text-xs" id="tb-param-status-BINANCE_API_KEY"></span>
             </div>
             <div class="field">
-              <label class="label"><code>BINANCE_API_SECRET</code></label>
+              <label class="label">Binance API secret <span class="help-tip" data-tip="API secret paired with the Binance key above.">?</span></label>
               <input type="password" id="tb-param-BINANCE_API_SECRET" class="input" autocomplete="off" />
               <span class="text-xs" id="tb-param-status-BINANCE_API_SECRET"></span>
             </div>
             <div class="field col-span-2">
-              <label class="label"><code>CLAUDE_CLI_PATH</code> (optional)</label>
+              <label class="label">Claude CLI path <span class="help-tip" data-tip="Absolute path to the Claude CLI binary (e.g. /usr/local/bin/claude). Only needed when CLAUDE_CONSULT_DISABLED=0. Leave blank to use whichever 'claude' is on PATH.">?</span></label>
               <input type="text" id="tb-param-CLAUDE_CLI_PATH" class="input" autocomplete="off" placeholder="/usr/bin/claude" />
             </div>
           </div>
