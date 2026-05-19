@@ -70,6 +70,10 @@ function isLikelyNetworkFailure(e) {
   );
 }
 
+function isBotOffline(e) {
+  return /\b502\b|fetch failed|twilight-bot request timed out/i.test(errMsg(e));
+}
+
 /** Background polls skip surfacing transport failures; user actions always show errors. */
 function shouldSurfaceFetchError(e, opts = {}) {
   if (opts.userAction) return true;
@@ -3059,8 +3063,8 @@ async function refreshBotTrades(opts = {}) {
     out.textContent = asPrettyJson(data);
   } catch (e) {
     const m = errMsg(e);
-    out.textContent = m;
-    if (opts.userAction) showDashboardError(m, 'twilight-bot trades');
+    out.textContent = isBotOffline(e) ? 'Bot not running — start it in Section 2.' : m;
+    if (opts.userAction && !isBotOffline(e)) showDashboardError(m, 'twilight-bot trades');
   }
 }
 
@@ -3171,8 +3175,8 @@ async function refreshBotPositions(opts = {}) {
     }
   } catch (e) {
     const m = errMsg(e);
-    container.innerHTML = `<p class="text-danger text-xs">${escapeHtml(m)}</p>`;
-    if (opts.userAction) showDashboardError(m, 'twilight-bot positions');
+    container.innerHTML = `<p class="text-xs ${isBotOffline(e) ? 'text-ink-muted' : 'text-danger'}">${escapeHtml(isBotOffline(e) ? 'Bot not running — start it in Section 2.' : m)}</p>`;
+    if (opts.userAction && !isBotOffline(e)) showDashboardError(m, 'twilight-bot positions');
   }
 }
 

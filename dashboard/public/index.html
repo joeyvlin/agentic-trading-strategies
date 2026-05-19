@@ -906,7 +906,75 @@ claude auth login</pre>
 
   </div><!-- /grid -->
 
+  <!-- Exit conditions + intent -->
+  <section class="card mt-4">
+    <div class="section-heading">
+      <h2><span class="text-gold font-display">3</span> Exit conditions &amp; send intent</h2>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+      <!-- Exit rules builder -->
+      <div class="card-inset space-y-3">
+        <p class="label">When should the bot close? <span class="help-tip" data-tip="DSL rules are evaluated each scheduler tick. Any matching rule triggers a close immediately. Can be sent to a live bot to update exit conditions on an active position.">?</span></p>
+
+        <div class="grid grid-cols-3 gap-2">
+          <div class="field">
+            <label class="label">Take profit %</label>
+            <input type="number" id="tb-exit-take-profit-pct" class="input" min="0.1" step="0.1" placeholder="5" />
+          </div>
+          <div class="field">
+            <label class="label">Stop loss %</label>
+            <input type="number" id="tb-exit-stop-loss-pct" class="input" min="0.1" step="0.1" placeholder="3" />
+          </div>
+          <div class="field">
+            <label class="label">Max hours</label>
+            <input type="number" id="tb-exit-max-hours" class="input" min="0" step="1" placeholder="0" />
+          </div>
+        </div>
+
+        <div class="space-y-1.5 border-t border-edge pt-3">
+          <label class="flex items-start gap-2 text-xs cursor-pointer group">
+            <input type="checkbox" id="tb-exit-close-unprofitable" class="mt-0.5 accent-gold" />
+            <span>
+              <span class="text-ink-muted group-hover:text-ink">Close when P&amp;L turns negative</span>
+              <code class="block text-ink-subtle mt-0.5">pnl.unrealized_pct ≤ 0</code>
+            </span>
+          </label>
+          <label class="flex items-start gap-2 text-xs cursor-pointer group">
+            <input type="checkbox" id="tb-exit-close-spread-inverts" class="mt-0.5 accent-gold" />
+            <span>
+              <span class="text-ink-muted group-hover:text-ink">Close when funding spread inverts</span>
+              <code class="block text-ink-subtle mt-0.5">Twilight rate ≤ CEX rate — for arb strategies</code>
+            </span>
+          </label>
+        </div>
+
+        <button type="button" class="btn btn-sm" id="btn-tb-build-intent-json">Build exit rules ↓</button>
+        <p class="text-xs text-ink-subtle">Ratchet floor rule (<code>pnl.locked_floor_pct</code>) is always added when any rule is set. Absolute USD stop loss is not yet supported by the DSL.</p>
+      </div>
+
+      <!-- Operator intent + send -->
+      <div class="card-inset space-y-2">
+        <p class="label">Intent JSON <span class="help-tip" data-tip="Edit legs[] to specify venue/side/notional/account_index. Exit rules are filled by the builder. Send paper to test without real funds.">?</span></p>
+        <textarea id="agentic-bot-intent-json" class="input font-mono text-xs h-36 resize-y" spellcheck="false"></textarea>
+        <label class="flex items-center gap-2 text-xs text-ink-muted">
+          <input type="checkbox" id="agentic-bot-confirm-live" />
+          confirm_live (required for live trades)
+        </label>
+        <div class="flex gap-2">
+          <button type="button" class="btn btn-sm" id="btn-agentic-bot-send-paper">Send paper</button>
+          <button type="button" class="btn-danger btn-sm" id="btn-agentic-bot-send-live">Send live</button>
+        </div>
+        <pre class="out text-xs" id="agentic-bot-live-out">—</pre>
+      </div>
+
+    </div>
+  </section>
+
   <!-- Bot live data: strategies / trades / positions -->
+  <div class="section-heading mt-4 mb-2">
+    <h2><span class="text-gold font-display">4</span> Live data</h2>
+  </div>
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
     <!-- Strategies -->
@@ -985,71 +1053,6 @@ claude auth login</pre>
     </section>
 
   </div><!-- /bot data grid -->
-
-  <!-- Exit conditions + intent — always visible, part of normal trade flow -->
-  <section class="card mt-4">
-    <div class="section-heading">
-      <h2><span class="text-gold font-display">4</span> Exit conditions &amp; send intent</h2>
-    </div>
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-
-      <!-- Exit rules builder -->
-      <div class="card-inset space-y-3">
-        <p class="label">When should the bot close? <span class="help-tip" data-tip="DSL rules are evaluated each scheduler tick. Any matching rule triggers a close immediately.">?</span></p>
-
-        <div class="grid grid-cols-3 gap-2">
-          <div class="field">
-            <label class="label">Take profit %</label>
-            <input type="number" id="tb-exit-take-profit-pct" class="input" min="0.1" step="0.1" placeholder="5" />
-          </div>
-          <div class="field">
-            <label class="label">Stop loss %</label>
-            <input type="number" id="tb-exit-stop-loss-pct" class="input" min="0.1" step="0.1" placeholder="3" />
-          </div>
-          <div class="field">
-            <label class="label">Max hours</label>
-            <input type="number" id="tb-exit-max-hours" class="input" min="0" step="1" placeholder="0" />
-          </div>
-        </div>
-
-        <div class="space-y-1.5 border-t border-edge pt-3">
-          <label class="flex items-start gap-2 text-xs cursor-pointer group">
-            <input type="checkbox" id="tb-exit-close-unprofitable" class="mt-0.5 accent-gold" />
-            <span>
-              <span class="text-ink-muted group-hover:text-ink">Close when P&amp;L turns negative</span>
-              <code class="block text-ink-subtle mt-0.5">pnl.unrealized_pct ≤ 0</code>
-            </span>
-          </label>
-          <label class="flex items-start gap-2 text-xs cursor-pointer group">
-            <input type="checkbox" id="tb-exit-close-spread-inverts" class="mt-0.5 accent-gold" />
-            <span>
-              <span class="text-ink-muted group-hover:text-ink">Close when funding spread inverts</span>
-              <code class="block text-ink-subtle mt-0.5">Twilight rate ≤ CEX rate — for arb strategies</code>
-            </span>
-          </label>
-        </div>
-
-        <button type="button" class="btn btn-sm" id="btn-tb-build-intent-json">Build exit rules ↓</button>
-        <p class="text-xs text-ink-subtle">Ratchet floor rule (<code>pnl.locked_floor_pct</code>) is always added when any rule is set. Absolute USD stop loss is not yet supported by the DSL.</p>
-      </div>
-
-      <!-- Operator intent + send -->
-      <div class="card-inset space-y-2">
-        <p class="label">Intent JSON <span class="help-tip" data-tip="Edit legs[] to specify venue/side/notional/account_index. Exit rules are filled by the builder. Send paper to test without real funds.">?</span></p>
-        <textarea id="agentic-bot-intent-json" class="input font-mono text-xs h-36 resize-y" spellcheck="false"></textarea>
-        <label class="flex items-center gap-2 text-xs text-ink-muted">
-          <input type="checkbox" id="agentic-bot-confirm-live" />
-          confirm_live (required for live trades)
-        </label>
-        <div class="flex gap-2">
-          <button type="button" class="btn btn-sm" id="btn-agentic-bot-send-paper">Send paper</button>
-          <button type="button" class="btn-danger btn-sm" id="btn-agentic-bot-send-live">Send live</button>
-        </div>
-        <pre class="out text-xs" id="agentic-bot-live-out">—</pre>
-      </div>
-
-    </div>
-  </section>
 
   <!-- Advanced diagnostics -->
   <details class="card mt-4">
