@@ -33,14 +33,23 @@ COPY configs/ /app/configs/
 COPY scripts/ /app/scripts/
 COPY dashboard/ /app/dashboard/
 
+# Pre-place relayer binary so postinstall's install-relayer-cli.mjs is a no-op
+ENV TWILIGHT_RELAYER_CLI=/app/tools/relayer-cli
+# Skip Playwright browser download (not needed at runtime)
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+
 WORKDIR /app/agents/twilight-strategy-monitor
 RUN npm ci --omit=dev
 
 WORKDIR /app/dashboard
-RUN npm ci --omit=dev
+# Full install includes devDeps (Tailwind); postinstall builds output.css automatically.
+# Then prune devDeps to keep the final image lean.
+RUN npm ci && npm prune --omit=dev
 
-ENV TWILIGHT_RELAYER_CLI=/app/tools/relayer-cli
 ENV NODE_ENV=production
 EXPOSE 3847
-WORKDIR /app/dashboard
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD node -e "fetch('http://localhost:3847/api/health').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"
+
 CMD ["node", "server.mjs"]

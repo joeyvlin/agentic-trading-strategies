@@ -1,0 +1,42 @@
+services:
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: agentic-trading-dashboard
+    container_name: agentic-dashboard
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT:-3847}:3847"
+    environment:
+      # Dashboard
+      NODE_ENV: production
+      DASHBOARD_PORT: "3847"
+      DASHBOARD_HOST: "0.0.0.0"
+      # Relayer
+      TWILIGHT_RELAYER_CLI: /app/tools/relayer-cli
+      # Override any of these via .env file or shell env vars
+      TWILIGHT_NETWORK: ${TWILIGHT_NETWORK:-testnet}
+      PAPER: ${PAPER:-1}
+    env_file:
+      - path: .env
+        required: false  # won't error if file doesn't exist
+    volumes:
+      # Persist wallet SQLite DB between container restarts
+      - dashboard-wallet-db:/app/dashboard/wallet_data.db
+      # Persist trade/position data
+      - dashboard-data:/app/data
+      # Allow editing configs without rebuild
+      - ./configs:/app/configs
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3847/api/health').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+volumes:
+  dashboard-wallet-db:
+    driver: local
+  dashboard-data:
+    driver: local

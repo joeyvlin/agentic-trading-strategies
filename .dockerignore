@@ -1,11 +1,53 @@
-node_modules
+# Version control
 .git
+.gitignore
+
+# Secrets — never bake into image
 .env
 .env.*
-*.log
+*.pem
+*.key
+
+# Dependencies (will be reinstalled inside container)
+node_modules
 dashboard/node_modules
 agents/**/node_modules
-data
-logs
-tmp
-temp
+external/**/node_modules
+**/node_modules
+
+# Compiled Tailwind output (built inside container)
+dashboard/public/output.css
+
+# Local persistent data — mount as volumes instead
+data/
+wallet_data.db
+dashboard/wallet_data.db
+
+# Logs and temp
+logs/
+*.log
+tmp/
+temp/
+
+# Test artifacts
+dashboard/test-results/
+dashboard/playwright-report/
+coverage/
+**/__pycache__/
+**/.venv/
+**/venv/
+
+# Build caches
+**/dist/
+**/build/
+**/*.egg-info/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Downloaded relayer-cli (built from source in Docker)
+tools/relayer-cli
