@@ -4,8 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "postinstall": "node ../scripts/install-relayer-cli.mjs",
-    "start": "node server.mjs"
+    "postinstall": "node ../scripts/install-relayer-cli.mjs && npm run build:css",
+    "start": "node server.mjs",
+    "build:css": "tailwindcss -i src/style.css -o public/output.css --minify",
+    "dev:css": "tailwindcss -i src/style.css -o public/output.css --watch",
+    "test": "node --test test/api.test.mjs",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "ccxt": "^4.4.0",
@@ -16,5 +20,11 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "autoprefixer": "^10.5.0",
+    "postcss": "^8.5.14",
+    "tailwindcss": "^3.4.19"
   }
 }
