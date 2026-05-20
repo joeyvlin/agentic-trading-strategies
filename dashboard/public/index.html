@@ -402,7 +402,8 @@
       <button type="button" class="btn btn-sm" id="btn-reload-exchange">Load saved</button>
     </div>
     <p class="text-xs text-ink-muted mt-2">Keys are stored in <code>data/exchange-keys.json</code> for the monitor. To use the same keys in the bot, click <strong>Autofill from dashboard</strong> in Bot tab → Section 1, then Save.</p>
-    <pre class="out mt-3" id="keys-out">—</pre>
+    <p class="text-xs mt-2" id="exchange-status"></p>
+    <p class="text-xs text-ink-muted" id="exchange-last-status"></p>
   </section>
 
 </div><!-- /desk-panel-manual -->
@@ -463,69 +464,122 @@
       <div class="section-heading">
         <h2>Monitor <span class="help-tip" data-tip="Autonomous strategy loop. Runs strategies on an interval, auto-sizes trades, and manages positions.">?</span></h2>
         <div class="flex gap-2">
-          <button type="button" class="btn-ok btn-sm" id="btn-monitor-start">Start</button>
-          <button type="button" class="btn-danger btn-sm" id="btn-monitor-stop">Stop</button>
-          <button type="button" class="btn btn-sm" id="btn-monitor-run-once">Run once</button>
+          <button type="button" class="btn-ok btn-sm" id="btn-start">Start</button>
+          <button type="button" class="btn-danger btn-sm" id="btn-stop">Stop</button>
+          <button type="button" class="btn btn-sm" id="btn-agent-run-once">Run once</button>
         </div>
       </div>
-      <p class="text-xs mb-3" id="monitor-status-line">—</p>
+      <p class="text-xs" id="status-line">—</p>
+      <p class="text-xs text-ink-muted" id="last-cycle"></p>
+      <pre class="out text-xs mt-1 hidden" id="monitor-error-detail"></pre>
       <div class="grid grid-cols-2 gap-3">
         <div class="field">
-          <label class="label">Poll interval (s)</label>
-          <input type="number" id="agent-poll-interval" class="input" placeholder="30" min="5" step="5" />
+          <label class="label">Poll interval (ms) <span class="help-tip" data-tip="How often the monitor checks for new strategy opportunities (default 20000 = 20s).">?</span></label>
+          <input type="number" id="agent-poll" class="input" placeholder="20000" min="5000" step="1000" />
         </div>
         <div class="field">
-          <label class="label">Strategy limit</label>
-          <input type="number" id="agent-strategy-limit" class="input" placeholder="5" min="1" step="1" />
+          <label class="label">Strategy limit <span class="help-tip" data-tip="Max strategies fetched per poll cycle.">?</span></label>
+          <input type="number" id="agent-limit" class="input" placeholder="5" min="1" step="1" />
         </div>
         <div class="field">
-          <label class="label">Execution mode</label>
-          <select id="agent-execution-mode" class="input">
+          <label class="label">Execution mode <span class="help-tip" data-tip="simulation = no real trades. real = live CEX execution (requires CEX keys and CONFIRM_REAL_TRADING=YES).">?</span></label>
+          <select id="agent-mode" class="input">
             <option value="simulation">Simulation</option>
             <option value="real">Real</option>
           </select>
         </div>
         <div class="field">
-          <label class="label">Max open positions</label>
-          <input type="number" id="agent-max-positions" class="input" placeholder="3" min="1" />
+          <label class="label">CEX venue <span class="help-tip" data-tip="Filter strategies to this exchange, or 'any' for all.">?</span></label>
+          <select id="agent-cex-venue" class="input">
+            <option value="any">Any</option>
+            <option value="bybit">Bybit</option>
+            <option value="binance">Binance</option>
+          </select>
         </div>
         <div class="field">
-          <label class="label">Max leverage</label>
-          <input type="number" id="agent-max-leverage" class="input" placeholder="5" min="1" step="0.5" />
+          <label class="label">Risk filter <span class="help-tip" data-tip="Only trade strategies with this risk rating, or 'any' to allow all.">?</span></label>
+          <select id="agent-strategy-risk" class="input">
+            <option value="any">Any</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
         </div>
         <div class="field">
-          <label class="label">Daily loss stop ($)</label>
-          <input type="number" id="agent-daily-loss-stop" class="input" placeholder="50" min="0" />
+          <label class="label">Max concurrent trades <span class="help-tip" data-tip="Maximum number of logical positions open at the same time.">?</span></label>
+          <input type="number" id="agent-max-concurrent" class="input" placeholder="5" min="1" />
+        </div>
+        <div class="field">
+          <label class="label">Max total notional ($) <span class="help-tip" data-tip="Hard cap on total USD notional across all open positions.">?</span></label>
+          <input type="number" id="agent-max-total" class="input" placeholder="10" min="0" step="1" />
+        </div>
+        <div class="field">
+          <label class="label">Max daily loss ($) <span class="help-tip" data-tip="Monitor halts for the day once realized losses exceed this amount.">?</span></label>
+          <input type="number" id="agent-max-daily" class="input" placeholder="50" min="0" />
+        </div>
+        <div class="field">
+          <label class="label">Max per-strategy notional ($) <span class="help-tip" data-tip="USD cap per single strategy execution. 0 = no per-strategy limit.">?</span></label>
+          <input type="number" id="agent-max-per-strategy" class="input" placeholder="5" min="0" step="1" />
+        </div>
+        <div class="field col-span-2">
+          <label class="label">Risk allowlist <span class="help-tip" data-tip="Comma-separated risk ratings to whitelist (e.g. low,medium). Leave blank to use Risk filter above.">?</span></label>
+          <input type="text" id="agent-risk-allowlist" class="input" placeholder="e.g. low,medium" />
+        </div>
+        <div class="field col-span-2">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="agent-profitable" checked />
+            <span class="text-ink-muted text-xs">Profitable strategies only <span class="help-tip" data-tip="Only consider strategies with positive APY.">?</span></span>
+          </label>
         </div>
       </div>
       <details class="mt-3">
         <summary class="text-xs text-ink-muted cursor-pointer hover:text-ink">Auto-close rules</summary>
         <div class="grid grid-cols-2 gap-3 mt-2">
           <div class="field">
-            <label class="label">Close on loss %</label>
-            <input type="number" id="agent-close-loss-pct" class="input" placeholder="e.g. 5" />
+            <label class="label">Close on loss % <span class="help-tip" data-tip="Auto-close a position when loss exceeds this % of initial notional.">?</span></label>
+            <input type="number" id="agent-auto-close-loss-pct" class="input" placeholder="e.g. 5" />
           </div>
           <div class="field">
-            <label class="label">Close on profit %</label>
-            <input type="number" id="agent-close-profit-pct" class="input" placeholder="e.g. 10" />
+            <label class="label">Close on profit % <span class="help-tip" data-tip="Auto-close a position when profit exceeds this % of initial notional.">?</span></label>
+            <input type="number" id="agent-auto-close-profit-pct" class="input" placeholder="e.g. 10" />
           </div>
           <div class="field">
-            <label class="label">Close after (min)</label>
-            <input type="number" id="agent-close-max-minutes" class="input" placeholder="e.g. 120" />
+            <label class="label">Close after (min) <span class="help-tip" data-tip="Auto-close a position if it has been held longer than this many minutes.">?</span></label>
+            <input type="number" id="agent-auto-close-max-min" class="input" placeholder="e.g. 120" />
           </div>
           <div class="field">
-            <label class="label col-span-2">
-              <label class="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" id="agent-close-apy-zero" />
-                <span class="text-ink-muted">Close when APY ≤ 0%</span>
-              </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="agent-auto-close-apy-toggle" checked />
+              <span class="text-ink-muted">Close when APY ≤ 0% <span class="help-tip" data-tip="Automatically close a position if strategy APY turns non-positive.">?</span></span>
             </label>
           </div>
         </div>
       </details>
+      <details class="mt-3">
+        <summary class="text-xs text-ink-muted cursor-pointer hover:text-ink">Advanced automation</summary>
+        <div class="grid grid-cols-2 gap-3 mt-2">
+          <div class="field col-span-2">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="chk-auto-pick-zkos" checked />
+              <span class="text-ink-muted text-xs">Auto-pick ZkOS account <span class="help-tip" data-tip="Let the monitor automatically choose a funded ZkOS account for Twilight trades.">?</span></span>
+            </label>
+          </div>
+          <div class="field col-span-2">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="chk-persist-zk-index" checked />
+              <span class="text-ink-muted text-xs">Persist ZkOS index after rotate <span class="help-tip" data-tip="Keep using the same ZkOS account index after a rotate, rather than re-picking.">?</span></span>
+            </label>
+          </div>
+          <div class="field">
+            <label class="label">Max ZkOS open-trade attempts <span class="help-tip" data-tip="How many times to retry opening a Twilight ZkOS trade before giving up.">?</span></label>
+            <input type="number" id="agent-open-trade-max-zk" class="input" placeholder="3" min="1" />
+          </div>
+        </div>
+      </details>
+      <pre class="out text-xs mt-2 hidden" id="agent-run-once-out"></pre>
       <div class="flex gap-2 mt-3">
-        <button type="button" class="btn-primary btn-sm" id="btn-agent-settings-save">Save settings</button>
-        <button type="button" class="btn btn-sm" id="btn-agent-settings-reload">Reload</button>
+        <button type="button" class="btn-primary btn-sm" id="btn-save-agent">Save settings</button>
+        <button type="button" class="btn btn-sm" id="btn-reload-agent">Reload</button>
       </div>
       <p class="text-xs text-ink-muted mt-1" id="agent-settings-msg"></p>
     </section>
@@ -539,6 +593,7 @@
       <div class="flex gap-2">
         <button type="button" class="btn btn-sm" id="btn-pnl-refresh-manual">Refresh</button>
         <button type="button" class="btn btn-sm" id="btn-pnl-refresh-automated" hidden>Refresh auto</button>
+        <button type="button" class="btn btn-sm" id="btn-pnl-refresh-agentic" hidden>Refresh agentic</button>
       </div>
     </div>
     <p class="text-xs text-ink-muted mb-3" id="pnl-note-line-manual" hidden></p>
@@ -596,27 +651,26 @@
       <h2>Trade desk <span class="help-tip" data-tip="Live positions from Binance, Bybit, and Twilight. Refreshed every 20s when enabled.">?</span></h2>
       <div class="flex gap-2 items-center">
         <label class="flex items-center gap-1 text-xs text-ink-muted">
-          <input type="checkbox" id="chk-trade-desk-auto-refresh" />
+          <input type="checkbox" id="chk-trade-desk-auto" />
           Auto-refresh
         </label>
         <button type="button" class="btn btn-sm" id="btn-trade-desk-refresh">Refresh</button>
       </div>
     </div>
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <div>
-        <p class="label mb-1">Agent executions</p>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead><tr><th>Time</th><th>Strategy</th><th>APY</th><th>Mode</th></tr></thead>
-            <tbody id="trade-desk-agent-body"></tbody>
-          </table>
-        </div>
-      </div>
+    <p class="text-xs text-ink-muted mb-2" id="trade-desk-meta"></p>
+    <div class="table-wrap mb-4">
+      <p class="label mb-1">Agent executions</p>
+      <table class="data-table">
+        <thead><tr><th>Time</th><th>Strategy</th><th>Trade ID</th><th>Mode</th><th>Ledger</th><th>Twilight</th><th>CEX</th></tr></thead>
+        <tbody id="trade-desk-exec-body"></tbody>
+      </table>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <div>
         <p class="label mb-1">Binance positions</p>
         <div class="table-wrap">
           <table class="data-table">
-            <thead><tr><th>Symbol</th><th>Side</th><th>Notional</th><th>PnL</th></tr></thead>
+            <thead><tr><th>Symbol</th><th>Side</th><th>Notional</th><th>PnL</th><th>Entry</th></tr></thead>
             <tbody id="trade-desk-binance-body"></tbody>
           </table>
         </div>
@@ -625,20 +679,15 @@
         <p class="label mb-1">Bybit positions</p>
         <div class="table-wrap">
           <table class="data-table">
-            <thead><tr><th>Symbol</th><th>Side</th><th>Notional</th><th>PnL</th></tr></thead>
+            <thead><tr><th>Symbol</th><th>Side</th><th>Notional</th><th>PnL</th><th>Entry</th></tr></thead>
             <tbody id="trade-desk-bybit-body"></tbody>
           </table>
         </div>
       </div>
     </div>
     <details class="mt-4">
-      <summary class="text-xs text-ink-muted cursor-pointer hover:text-ink">Twilight account orders</summary>
-      <div class="table-wrap mt-2">
-        <table class="data-table">
-          <thead><tr><th>Index</th><th>Balance</th><th>State</th><th>Order type</th><th>On-chain</th></tr></thead>
-          <tbody id="trade-desk-twilight-body"></tbody>
-        </table>
-      </div>
+      <summary class="text-xs text-ink-muted cursor-pointer hover:text-ink">Twilight ZkOS live data</summary>
+      <pre class="out text-xs mt-2" id="trade-desk-twilight-out">—</pre>
     </details>
   </section>
 
@@ -661,24 +710,28 @@
           <button type="button" class="btn btn-sm" id="btn-reload-config">Reload</button>
           <button type="button" class="btn-primary btn-sm" id="btn-save-config">Save config</button>
         </div>
-        <textarea id="config-yaml-editor" class="input font-mono text-xs h-48 resize-y" spellcheck="false"></textarea>
+        <textarea id="config-yaml" class="input font-mono text-xs h-48 resize-y" spellcheck="false"></textarea>
+        <p class="text-xs text-ink-muted mt-1" id="config-msg"></p>
       </div>
 
       <div class="card-inset">
         <p class="label mb-2">Portfolio</p>
-        <button type="button" class="btn-danger btn-sm" id="btn-reset-portfolio">Reset portfolio snapshot</button>
+        <div class="flex gap-2 mb-2">
+          <button type="button" class="btn btn-sm" id="btn-refresh-tx">Refresh</button>
+          <button type="button" class="btn-danger btn-sm" id="btn-reset-portfolio">Reset portfolio snapshot</button>
+        </div>
         <div class="table-wrap mt-2">
           <table class="data-table" id="tx-table">
-            <thead><tr><th>Time</th><th>Strategy</th><th>APY%</th><th>Notional</th><th>Mode</th></tr></thead>
-            <tbody id="tx-table-body"></tbody>
+            <thead><tr><th>Time</th><th>Strategy</th><th>APY%</th><th>Notional</th><th>Daily est.</th><th>Mode</th></tr></thead>
+            <tbody id="tx-body"></tbody>
           </table>
         </div>
       </div>
 
       <div class="card-inset">
         <p class="label mb-2">Recent logs</p>
-        <button type="button" class="btn btn-sm" id="btn-logs-refresh">Refresh logs</button>
-        <pre class="out-tall mt-2" id="logs-out">—</pre>
+        <button type="button" class="btn btn-sm" id="btn-refresh-logs">Refresh logs</button>
+        <pre class="out-tall mt-2" id="log-box">—</pre>
       </div>
 
       <div class="card-inset">
@@ -827,6 +880,10 @@
               <label class="label">Binance API secret <span class="help-tip" data-tip="API secret paired with the Binance key above.">?</span></label>
               <input type="password" id="tb-param-BINANCE_API_SECRET" class="input" autocomplete="off" />
               <span class="text-xs" id="tb-param-status-BINANCE_API_SECRET"></span>
+            </div>
+            <div class="field">
+              <label class="label">Binance testnet <span class="help-tip" data-tip="Set to 1 to use Binance Futures testnet. Leave blank or 0 for mainnet.">?</span></label>
+              <input type="text" id="tb-param-BINANCE_TESTNET" class="input" autocomplete="off" placeholder="0" />
             </div>
             <div class="field col-span-2">
               <label class="label">Claude CLI path <span class="help-tip" data-tip="Absolute path to the Claude CLI binary (e.g. /usr/local/bin/claude). Only needed when CLAUDE_CONSULT_DISABLED=0. Leave blank to use whichever 'claude' is on PATH.">?</span></label>

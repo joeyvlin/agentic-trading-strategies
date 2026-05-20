@@ -225,6 +225,12 @@ export function mergeAndWriteEnv(updates = {}, opts = {}) {
     }
   }
 
+  if (merged.STRATEGY_API_BASE_URL) {
+    merged.STRATEGY_API_BASE = merged.STRATEGY_API_BASE_URL;
+  } else {
+    delete merged.STRATEGY_API_BASE;
+  }
+
   writeEnvFile(merged);
   return getEnvStateForApi();
 }

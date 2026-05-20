@@ -222,8 +222,15 @@ export const ENV_DEFS = [
   {
     key: 'BINANCE_USE_TESTNET',
     group: 'cex',
-    label: 'Binance testnet',
-    help: 'Set to 1 for sandbox.',
+    label: 'Binance testnet (monitor)',
+    help: 'Set to 1 for sandbox. Used by the strategy monitor and trade desk.',
+    type: 'text',
+  },
+  {
+    key: 'BINANCE_TESTNET',
+    group: 'cex',
+    label: 'Binance testnet (bot)',
+    help: 'Set to 1 for testnet. Used by the twilight-bot. Set automatically when you save CEX keys.',
     type: 'text',
   },
   {
@@ -341,6 +348,14 @@ export const ENV_DEFS = [
     label: 'Twilight-bot git clone URL',
     help: 'Default: runnerelectrode/twilight-bot.git — must match https://github.com/org/repo(.git).',
     type: 'text',
+  },
+  {
+    key: 'STRATEGY_API_BASE',
+    group: 'twilight_bot',
+    label: 'Strategy API base URL (bot)',
+    help: 'Auto-mirrored from STRATEGY_API_BASE_URL. The twilight-bot uses this var name; they are kept in sync.',
+    type: 'text',
+    hideFromEnvForm: true,
   },
   {
     key: 'PAPER',
