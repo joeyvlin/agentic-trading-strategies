@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p /Users/martybyrde/Documents/Projects/agentic-trading-strategies/.claude/commands)"
+    ],
+    "additionalDirectories": [
+      "/Users/martybyrde/.claude",
+      "/Users/martybyrde/Documents/Projects/agentic-trading-strategies/.claude"
+    ]
+  }
+}

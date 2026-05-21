@@ -14,6 +14,8 @@ A collection of **AI agents** for systematic trading. Agents combine market sign
 
    If you already cloned without submodules: `git submodule update --init --depth 1 external/twilight-bot`.
 
+   > **Claude Code users:** run `/setup-external-deps` for a guided, state-aware walkthrough of the submodule and `relayer-cli` setup steps.
+
 2. Set `STRATEGY_API_KEY` in `.env` (see [twilight-project/agentskill](https://github.com/twilight-project/agentskill)).
 
 3. Install and run **simulation** (no real orders, still uses live Strategy API data):
@@ -37,15 +39,22 @@ npm run skills:apply   # overwrite mirrors + refresh SHAs in skills/.../UPSTREAM
 
 ### Web dashboard
 
-Browser UI to start/stop the monitor, edit YAML config, run **`Run simulation once`**, and inspect transactions / estimated P&amp;L:
+Local Express server + single-page browser UI with three tabs:
+
+| Tab | Purpose |
+|-----|---------|
+| **Manual** | Wallet setup, ZkOS account actions, faucet, CEX key management, best-strategy table, position P&L |
+| **Automated** | Start/stop the monitor loop, edit `agent.monitor.yaml`, run one simulation cycle, configure auto-close rules |
+| **Agentic** | Spin up and control the external `twilight-bot` process; live/paper mode toggles |
 
 ```bash
+# Requires STRATEGY_API_KEY in .env (see configs/env.example)
 cd dashboard
 npm install
 npm start
 ```
 
-Then open **http://127.0.0.1:3847**. Details: **[dashboard/README.md](dashboard/README.md)**.
+Open **http://127.0.0.1:3847**. Full details and API reference: **[dashboard/README.md](dashboard/README.md)**.
 
 ## Phase 1: Twilight multi-venue agents
 
@@ -56,6 +65,7 @@ The first agents use **[Twilight Protocol](https://twilight.rest)** alongside ce
 | Path | Purpose |
 |------|---------|
 | [`skills/twilight-protocol-agentskill/`](skills/twilight-protocol-agentskill/) | Cursor-oriented skill bundle: Strategy API + `relayer-cli` context (synced from [twilight-project/agentskill](https://github.com/twilight-project/agentskill)) |
+| [`.claude/commands/setup-external-deps.md`](.claude/commands/setup-external-deps.md) | Claude Code `/setup-external-deps` skill: guided setup for the twilight-bot submodule and `relayer-cli` binary |
 | [`agents/twilight-strategy-monitor/`](agents/twilight-strategy-monitor/) | Node.js monitor: Strategy API polling, risk limits, simulation vs. real execution |
 | [`docs/`](docs/) | Architecture, operations, and safety notes |
 | [`configs/`](configs/) | `agent.monitor.yaml`, `env.example` |
