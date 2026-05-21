@@ -97,9 +97,9 @@ Terminal fallback: call bot HTTP endpoints directly, e.g. `curl 'http://127.0.0.
 
 For non-paper flow, the Agentic **Required parameters** panel now includes live-mode helpers:
 - one-click presets for `PAPER=0` + `LIVE_TRADING_CONFIRMED=YES`
-- consult toggle via `CLAUDE_CONSULT_DISABLED` (ON/OFF)
-- optional `CLAUDE_CLI_PATH`
-- a readiness block that explains whether live startup is blocked and whether Claude auth is required (`claude auth login`)
+- **Claude AI trade review** toggle (`CLAUDE_CONSULT_DISABLED`: default **1** = off, no Claude credentials; **0** = on, needs `claude auth login` on the bot host — not an Anthropic API key in `.env`)
+- optional `CLAUDE_CLI_PATH` (shown only when review is ON)
+- readiness block states clearly whether Claude is required for your current settings
 
 | Fallback | When to use |
 |----------|-------------|

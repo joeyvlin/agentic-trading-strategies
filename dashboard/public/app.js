@@ -2803,7 +2803,7 @@ function readNumOrDefault(id, def) {
 const TWILIGHT_BOT_PARAM_DEFAULTS = {
   PAPER: '1',
   LIVE_TRADING_CONFIRMED: 'NO',
-  CLAUDE_CONSULT_DISABLED: '0',
+  CLAUDE_CONSULT_DISABLED: '1',
   MAX_OPEN_POSITIONS: '1',
   MAX_NOTIONAL_USD_PER_INTENT: '200',
   MAX_LEVERAGE: '5',
@@ -2850,16 +2850,46 @@ function tbParamStatusEl(key) {
   return document.getElementById(`tb-param-status-${key}`);
 }
 
+function isTwilightBotConsultDisabled() {
+  const raw = String(tbParamInput('CLAUDE_CONSULT_DISABLED')?.value ?? TWILIGHT_BOT_PARAM_DEFAULTS.CLAUDE_CONSULT_DISABLED).trim();
+  return raw === '1' || raw.toLowerCase() === 'true' || raw.toLowerCase() === 'yes';
+}
+
+function setTwilightBotConsultDisabled(disabled) {
+  const el = tbParamInput('CLAUDE_CONSULT_DISABLED');
+  if (el) el.value = disabled ? '1' : '0';
+  updateTwilightBotConsultUi();
+  updateTwilightBotLiveReadiness();
+}
+
+function updateTwilightBotConsultUi() {
+  const consultOff = isTwilightBotConsultDisabled();
+  document.getElementById('btn-tb-consult-off')?.classList.toggle('is-selected', consultOff);
+  document.getElementById('btn-tb-consult-on')?.classList.toggle('is-selected', !consultOff);
+  const note = document.getElementById('tb-consult-dependency-note');
+  if (note) {
+    note.textContent = consultOff
+      ? 'No Claude credentials needed for twilight-bot trading: no Anthropic API key in .env and no claude auth login on this machine.'
+      : 'Live trades require Claude CLI auth on the host running twilight-bot: run claude auth login once (OAuth subscription — not an Anthropic API key in .env). Optional /chat also uses Claude.';
+  }
+  document.getElementById('tb-claude-cli-details')?.toggleAttribute('hidden', consultOff);
+  const authCmd = document.getElementById('agentic-terminal-claude-auth-cmd');
+  if (authCmd) {
+    authCmd.textContent = consultOff
+      ? '# Claude consult OFF (CLAUDE_CONSULT_DISABLED=1): no claude auth login needed for trading.'
+      : '# Claude consult ON: on the host running twilight-bot, run once:\nclaude auth login';
+  }
+}
+
 function updateTwilightBotLiveReadiness() {
   const out = document.getElementById('tb-live-readiness-out');
   if (!out) return;
   const paper = String(tbParamInput('PAPER')?.value || '').trim();
   const liveConfirmed = String(tbParamInput('LIVE_TRADING_CONFIRMED')?.value || '').trim().toUpperCase();
-  const consultDisabled = String(tbParamInput('CLAUDE_CONSULT_DISABLED')?.value || '').trim();
+  const consultOff = isTwilightBotConsultDisabled();
   const claudePath = String(tbParamInput('CLAUDE_CLI_PATH')?.value || '').trim();
 
   const mode = paper === '0' ? 'live' : 'paper';
-  const consultOn = consultDisabled !== '1';
   const checks = [];
   let level = 'ok';
   if (mode === 'live') {
@@ -2869,16 +2899,20 @@ function updateTwilightBotLiveReadiness() {
       checks.push('BLOCKER: set LIVE_TRADING_CONFIRMED=YES');
       level = 'blocker';
     }
-    if (consultOn) {
-      checks.push('INFO: Claude consult is ON (requires `claude auth login` on host).');
-      checks.push(claudePath ? `INFO: CLAUDE_CLI_PATH set (${claudePath})` : 'INFO: CLAUDE_CLI_PATH not set (auto-discovery).');
+    if (consultOff) {
+      checks.push('OK: Claude consult OFF — no Anthropic API key or claude auth login required for trading.');
+      checks.push('INFO: Optional POST /chat still needs Claude CLI if you use the copilot.');
     } else {
-      checks.push('WARN: Claude consult is OFF (CLAUDE_CONSULT_DISABLED=1).');
-      if (level !== 'blocker') level = 'warn';
+      checks.push('INFO: Claude consult ON — run claude auth login on the bot host (not an API key in .env).');
+      checks.push(claudePath ? `INFO: CLAUDE_CLI_PATH=${claudePath}` : 'INFO: CLAUDE_CLI_PATH unset (use claude on PATH).');
     }
   } else {
-    checks.push('INFO: PAPER mode enabled; live confirmations are not required.');
-    level = 'warn';
+    checks.push('INFO: Paper mode — live confirmations not required.');
+    if (consultOff) {
+      checks.push('OK: Consult OFF — no Claude setup needed when you switch to live.');
+    } else {
+      checks.push('INFO: Consult ON will apply when PAPER=0 (needs claude auth login on bot host).');
+    }
   }
   out.classList.remove('tb-live-readiness-ok', 'tb-live-readiness-warn', 'tb-live-readiness-blocker');
   if (level === 'blocker') out.classList.add('tb-live-readiness-blocker');
@@ -2886,6 +2920,7 @@ function updateTwilightBotLiveReadiness() {
   else out.classList.add('tb-live-readiness-ok');
   const banner = level === 'blocker' ? 'BLOCKER' : level === 'warn' ? 'WARNING' : 'READY';
   out.textContent = [`${banner} · Mode: ${mode.toUpperCase()}`, ...checks].join('\n');
+  updateTwilightBotConsultUi();
 }
 
 function getTwilightBotAutoFillValues() {
@@ -5271,14 +5306,10 @@ document.getElementById('btn-tb-live-preset')?.addEventListener('click', () => {
   updateTwilightBotLiveReadiness();
 });
 document.getElementById('btn-tb-consult-on')?.addEventListener('click', () => {
-  const el = tbParamInput('CLAUDE_CONSULT_DISABLED');
-  if (el) el.value = '0';
-  updateTwilightBotLiveReadiness();
+  setTwilightBotConsultDisabled(false);
 });
 document.getElementById('btn-tb-consult-off')?.addEventListener('click', () => {
-  const el = tbParamInput('CLAUDE_CONSULT_DISABLED');
-  if (el) el.value = '1';
-  updateTwilightBotLiveReadiness();
+  setTwilightBotConsultDisabled(true);
 });
 document.getElementById('btn-tb-params-save')?.addEventListener('click', () => {
   saveTwilightBotParams();

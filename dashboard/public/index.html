@@ -812,10 +812,18 @@
             <label class="label">Live trading confirmed <span class="help-tip" data-tip="Must be set to YES before the bot will send real orders. A second safety gate on top of PAPER=0. Set intentionally — not by accident.">?</span></label>
             <input type="text" id="tb-param-LIVE_TRADING_CONFIRMED" class="input" autocomplete="off" />
           </div>
-          <div class="field">
-            <label class="label">Claude consult disabled <span class="help-tip" data-tip="1 = bot skips asking Claude AI for trade approval and acts autonomously. 0 = Claude reviews each intent before execution. Disable if you don't have a Claude CLI set up.">?</span></label>
-            <input type="text" id="tb-param-CLAUDE_CONSULT_DISABLED" class="input" autocomplete="off" />
+
+          <div class="field col-span-2 tb-consult-block" id="tb-consult-block">
+            <label class="label">Claude AI trade review <span class="help-tip" data-tip="Optional safety layer: before each live trade, twilight-bot can ask Claude to approve or reject the intent. This uses the Claude CLI on the host (claude auth login — OAuth subscription), not an Anthropic API key in .env. Most users should leave this OFF and rely on guards + impact checks only.">?</span></label>
+            <p class="text-xs text-ink-muted mb-2" id="tb-consult-dependency-note">—</p>
+            <input type="hidden" id="tb-param-CLAUDE_CONSULT_DISABLED" value="1" />
+            <div class="tb-consult-toggle flex flex-wrap gap-2 mb-1" role="group" aria-label="Claude consult">
+              <button type="button" class="btn btn-sm" id="btn-tb-consult-off">Off — no Claude (recommended)</button>
+              <button type="button" class="btn btn-sm" id="btn-tb-consult-on">On — requires Claude CLI login</button>
+            </div>
+            <p class="text-xs text-ink-muted">Writes <code class="font-mono">CLAUDE_CONSULT_DISABLED</code> to <code class="font-mono">.env</code> (<code class="font-mono">1</code> = off, <code class="font-mono">0</code> = on). Save, then restart or spin up the bot.</p>
           </div>
+
           <div class="field">
             <label class="label">Max open positions <span class="help-tip" data-tip="Maximum number of simultaneous open trades across all venues. Bot won't open new positions once this limit is reached.">?</span></label>
             <input type="text" id="tb-param-MAX_OPEN_POSITIONS" class="input" inputmode="numeric" autocomplete="off" />
@@ -869,7 +877,7 @@
         </div>
 
         <details>
-          <summary class="text-xs text-ink-muted cursor-pointer hover:text-ink">Binance keys + Claude CLI (optional)</summary>
+          <summary class="text-xs text-ink-muted cursor-pointer hover:text-ink">Binance keys (optional)</summary>
           <div class="grid grid-cols-2 gap-3 mt-2">
             <div class="field">
               <label class="label">Binance API key <span class="help-tip" data-tip="API key from Binance Futures (USDM). Required only if using Binance as the CEX leg. Needs Futures read + trade permissions.">?</span></label>
@@ -885,8 +893,14 @@
               <label class="label">Binance testnet <span class="help-tip" data-tip="Set to 1 to use Binance Futures testnet. Leave blank or 0 for mainnet.">?</span></label>
               <input type="text" id="tb-param-BINANCE_TESTNET" class="input" autocomplete="off" placeholder="0" />
             </div>
-            <div class="field col-span-2">
-              <label class="label">Claude CLI path <span class="help-tip" data-tip="Absolute path to the Claude CLI binary (e.g. /usr/local/bin/claude). Only needed when CLAUDE_CONSULT_DISABLED=0. Leave blank to use whichever 'claude' is on PATH.">?</span></label>
+          </div>
+        </details>
+
+        <details id="tb-claude-cli-details" hidden>
+          <summary class="text-xs text-ink-muted cursor-pointer hover:text-ink">Claude CLI (only when AI trade review is ON)</summary>
+          <div class="grid grid-cols-1 gap-3 mt-2">
+            <div class="field">
+              <label class="label">Claude CLI path <span class="help-tip" data-tip="Absolute path to the Claude CLI binary (e.g. /usr/local/bin/claude). Used for live trade review and optional /chat. Auth is via claude auth login on this machine (OAuth) — not an Anthropic API key in .env. Leave blank to use whichever claude is on PATH.">?</span></label>
               <input type="text" id="tb-param-CLAUDE_CLI_PATH" class="input" autocomplete="off" placeholder="/usr/bin/claude" />
             </div>
           </div>
@@ -895,8 +909,6 @@
         <div class="flex flex-wrap gap-2">
           <button type="button" class="btn btn-sm" id="btn-tb-params-autofill">Autofill from dashboard</button>
           <button type="button" class="btn btn-sm" id="btn-tb-live-preset">Live preset</button>
-          <button type="button" class="btn btn-sm" id="btn-tb-consult-on">Consult ON</button>
-          <button type="button" class="btn btn-sm" id="btn-tb-consult-off">Consult OFF</button>
           <button type="button" class="btn-primary btn-sm" id="btn-tb-params-save">Save</button>
         </div>
         <pre class="out text-xs" id="tb-live-readiness-out">Checking readiness…</pre>
@@ -958,8 +970,7 @@ curl 'http://127.0.0.1:8787/positions'
 curl 'http://127.0.0.1:8787/strategies?profitable=true&limit=10'
 curl -X PUT 'http://127.0.0.1:8787/kill-switch' -d '{"on":true}' -H 'content-type:application/json'</pre>
           <pre class="out text-xs" id="agentic-terminal-start-cmd">cd external/twilight-bot && npm install && npm run build && npm start</pre>
-          <pre class="out text-xs" id="agentic-terminal-claude-auth-cmd"># if consult is ON:
-claude auth login</pre>
+          <pre class="out text-xs" id="agentic-terminal-claude-auth-cmd"># Claude consult OFF (default): no claude auth login needed for trading.</pre>
         </div>
       </details>
     </section>

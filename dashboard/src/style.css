@@ -242,3 +242,11 @@
 .tb-live-readiness-ok      { @apply readiness-ok; }
 .tb-live-readiness-warn    { @apply readiness-warn; }
 .tb-live-readiness-blocker { @apply readiness-blocker; }
+
+/* Agentic tab: Claude consult toggle */
+.tb-consult-block {
+  @apply rounded-xl border border-edge bg-surface-inset/60 p-3;
+}
+.tb-consult-toggle .btn.is-selected {
+  @apply border-gold bg-gold/15 text-ink;
+}

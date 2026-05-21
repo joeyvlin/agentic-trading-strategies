@@ -374,15 +374,15 @@ export const ENV_DEFS = [
   {
     key: 'CLAUDE_CONSULT_DISABLED',
     group: 'twilight_bot',
-    label: 'Claude consult disabled',
-    help: '1 = bot acts autonomously. 0 = Claude AI reviews each intent before execution.',
+    label: 'Claude AI trade review off',
+    help: '1 (recommended) = no Claude for live trades — no Anthropic API key or claude auth login. 0 = Claude reviews each live intent via CLI (claude auth login on the bot host).',
     type: 'text',
   },
   {
     key: 'CLAUDE_CLI_PATH',
     group: 'twilight_bot',
     label: 'Claude CLI path',
-    help: 'Absolute path to the Claude CLI binary. Leave blank to use PATH.',
+    help: 'Only when CLAUDE_CONSULT_DISABLED=0 or using /chat. Path to claude binary; auth is OAuth via claude auth login, not an API key in .env.',
     type: 'text',
   },
   {

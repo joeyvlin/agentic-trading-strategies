@@ -509,6 +509,18 @@ test.describe('Bot tab — params', () => {
     await expect(page.locator('#tb-param-BYBIT_TESTNET')).toBeAttached();
   });
 
+  test('Claude consult toggle updates env value and dependency note', async ({ page }) => {
+    await page.waitForTimeout(300);
+    await page.click('#btn-tb-consult-off');
+    await expect(page.locator('#tb-param-CLAUDE_CONSULT_DISABLED')).toHaveValue('1');
+    await expect(page.locator('#btn-tb-consult-off')).toHaveClass(/is-selected/);
+    await expect(page.locator('#tb-consult-dependency-note')).toContainText(/no Anthropic API key/i);
+    await page.click('#btn-tb-consult-on');
+    await expect(page.locator('#tb-param-CLAUDE_CONSULT_DISABLED')).toHaveValue('0');
+    await expect(page.locator('#tb-claude-cli-details')).toBeVisible();
+    await expect(page.locator('#tb-consult-dependency-note')).toContainText(/claude auth login/i);
+  });
+
   test('autofill from dashboard button works without JS error', async ({ page }) => {
     const jsErrors = [];
     page.on('pageerror', e => jsErrors.push(e.message));
